@@ -1,7 +1,7 @@
 ---
 title: "User Roles and Permission System in Gobarau Backend"
 sidebarTitle: "Roles & Permissions"
-description: "Gobarau Backend enforces role-based access with ten predefined roles and four custom DRF permission classes covering admin, staff, teacher, and parent access levels."
+description: "Ten predefined roles and four custom DRF permission classes enforce role-based access control across all Gobarau Backend API endpoints."
 ---
 
 Gobarau Backend implements a role-based access control (RBAC) system built directly on top of Django REST Framework's permission layer. Every `User` record carries a `role` field (a `CharField` with choices from `RoleChoices`) that identifies what that user is permitted to do across the system. Rather than relying on Django's group-based permissions or per-object `Permission` records, the system uses four custom DRF `BasePermission` subclasses that inspect `request.user.role` at the view level. This keeps permission logic explicit, centralised in `core/permissions.py`, and easy to audit.
@@ -94,7 +94,7 @@ class IsAdminLevel(BasePermission):
 
 ### `IsStaffOrAdmin`
 
-Extends `IsAdminLevel` to also permit `bursar` and `teacher` roles. Use this on ViewSets where operational staff — not just leadership — need read or write access, such as student lists, class schedules, and finance summaries.
+Extends `BasePermission` to permit the same three admin-level roles as `IsAdminLevel` plus the `bursar` and `teacher` roles. Use this on ViewSets where operational staff — not just leadership — need read or write access, such as student lists, class schedules, and finance summaries.
 
 ```python
 class IsStaffOrAdmin(BasePermission):

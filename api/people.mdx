@@ -1,7 +1,7 @@
 ---
-title: "People API — Student, Teacher, Parent, and Alumni Profiles"
+title: "People API — Profiles, Enrollments, and Relationships"
 sidebarTitle: "People"
-description: "REST endpoints for role-based profile management: student enrollments, teacher assignments, parent guardians, alumni records, class enrollments, and ward relationships."
+description: "Manage student, teacher, parent, and alumni profiles plus class enrollments and parent-student ward relationships via the Gobarau Academy People API."
 ---
 
 The **People** module is the role layer of Gobarau Academy's identity system. Every individual in the system starts as a `Person` record in the Accounts app; the People app then builds specialised, role-specific profiles on top of that identity. A single person can simultaneously hold a student profile, a parent profile, or eventually an alumni profile — each captured in its own resource with fields relevant to that role. The six endpoints below cover every profile type, as well as the cross-cutting concerns of class enrollment history and parent-student guardian relationships.

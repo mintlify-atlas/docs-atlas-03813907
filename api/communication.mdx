@@ -1,7 +1,7 @@
 ---
-title: "Communication API — Announcements, Notifications, and Messaging"
+title: "Communication API — Announcements, Messaging & Notifications"
 sidebarTitle: "Communication"
-description: "REST endpoints for school communication: role-targeted announcements, per-user notifications, direct messages, student Q&A board, and alumni career talk sessions."
+description: "REST endpoints for school communication: role-targeted announcements, per-user notifications, direct messages, Q&A board, and alumni career talk sessions."
 ---
 
 The Communication module is the backbone of information exchange across the Gobarau Academy platform. It provides structured channels for administrators and staff to broadcast role-targeted announcements, deliver automated per-user notifications, facilitate private direct messages between users, host a student Q&A board for academic queries, and coordinate alumni career talk sessions. All endpoints sit under the `/api/communication/` prefix and require authentication; write operations on announcements, questions, and career talk sessions additionally require staff or admin-level permissions.
@@ -83,7 +83,8 @@ curl -X POST https://api.gobarau.edu.ng/api/communication/announcements/ \
 
 ```json
 {
-  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "id": 1,
+  "public_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "title": "End-of-Term Examination Timetable Released",
   "body": "The timetable for the First Term examinations has been published on the noticeboard. All students are advised to collect their copies from the admin office.",
   "audience": "student",
@@ -97,8 +98,12 @@ curl -X POST https://api.gobarau.edu.ng/api/communication/announcements/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the announcement.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the announcement.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the announcement (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="title" type="string">
@@ -219,8 +224,12 @@ curl -X PATCH https://api.gobarau.edu.ng/api/communication/notifications/7d3e9f1
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the notification.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the notification.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the notification (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="recipient" type="integer">
@@ -252,7 +261,11 @@ curl -X PATCH https://api.gobarau.edu.ng/api/communication/notifications/7d3e9f1
 </ResponseField>
 
 <ResponseField name="created_at" type="string (datetime)">
-  Record creation timestamp.
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -302,15 +315,19 @@ curl -X POST https://api.gobarau.edu.ng/api/communication/messages/ \
   -d '{
     "sender": 15,
     "recipient": 42,
-    "subject": "Regarding Your Child's Progress",
-    "body": "Dear Mr. Sani, I would like to schedule a meeting to discuss Aisha's academic performance this term. Please let me know your availability."
+    "subject": "Regarding Your Child'\''s Progress",
+    "body": "Dear Mr. Sani, I would like to schedule a meeting to discuss Aisha'\''s academic performance this term. Please let me know your availability."
   }'
 ```
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the message.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the message.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the message (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="sender" type="integer">
@@ -330,7 +347,7 @@ curl -X POST https://api.gobarau.edu.ng/api/communication/messages/ \
 </ResponseField>
 
 <ResponseField name="sent_at" type="string (datetime)">
-  Datetime the message was sent (`auto_now_add`).
+  Datetime the message was sent (`auto_now_add`). Read-only.
 </ResponseField>
 
 <ResponseField name="is_read" type="boolean">
@@ -339,6 +356,14 @@ curl -X POST https://api.gobarau.edu.ng/api/communication/messages/ \
 
 <ResponseField name="read_at" type="string (datetime) | null">
   Datetime the message was read, or `null` if unread.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -409,8 +434,12 @@ curl -X PATCH https://api.gobarau.edu.ng/api/communication/questions/f1e2d3c4-b5
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the question.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the question.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the question (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="student" type="integer">
@@ -426,7 +455,7 @@ curl -X PATCH https://api.gobarau.edu.ng/api/communication/questions/f1e2d3c4-b5
 </ResponseField>
 
 <ResponseField name="asked_at" type="string (datetime)">
-  Datetime the question was submitted (`auto_now_add`).
+  Datetime the question was submitted (`auto_now_add`). Read-only.
 </ResponseField>
 
 <ResponseField name="answer_text" type="string">
@@ -439,6 +468,14 @@ curl -X PATCH https://api.gobarau.edu.ng/api/communication/questions/f1e2d3c4-b5
 
 <ResponseField name="answered_at" type="string (datetime) | null">
   Datetime the answer was given, or `null` if unanswered.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -507,8 +544,12 @@ curl -X POST https://api.gobarau.edu.ng/api/communication/career-talk-sessions/ 
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the session.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the session.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the session (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="title" type="string">
@@ -544,9 +585,9 @@ curl -X POST https://api.gobarau.edu.ng/api/communication/career-talk-sessions/ 
 </ResponseField>
 
 <ResponseField name="created_at" type="string (datetime)">
-  Record creation timestamp.
+  Record creation timestamp (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="updated_at" type="string (datetime)">
-  Last modification timestamp.
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>

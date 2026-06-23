@@ -1,7 +1,7 @@
 ---
-title: "Services API — Library and Student Transport Management"
+title: "Services API — Library and Student Transport"
 sidebarTitle: "Services"
-description: "REST endpoints for school support services: library book catalogue, borrowing records, overdue fines, bus routes, vehicle fleet, and student transport subscriptions."
+description: "REST endpoints for school services: library books, borrowing records, overdue fines, bus routes, bus vehicles, and student transport subscriptions."
 ---
 
 The Services module extends Gobarau Academy's backend with two core student support systems: the school library and the student transport network. The library sub-domain manages the full book lifecycle — cataloguing titles, tracking who has borrowed what and when, and recording overdue fines for unreturned books. The transport sub-domain handles route definitions, the vehicle fleet, and per-student subscription enrollments that map a student to a specific bus route and direction for an academic session. All endpoints require authentication and `IsStaffOrAdmin` permissions.
@@ -20,8 +20,11 @@ Returns the full catalogue of library books ordered alphabetically by title.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the book record.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the book record.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="title" type="string">
   Full title of the book (max 200 characters).
@@ -95,8 +98,11 @@ Returns all borrow records ordered by most recent borrow date first.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the borrow record.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the borrow record.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="book" type="integer (FK)">
   ID of the `Book` that was borrowed.
@@ -115,6 +121,12 @@ Returns all borrow records ordered by most recent borrow date first.
 </ResponseField>
 <ResponseField name="status" type="string (enum)">
   Current status of the borrow. One of: `borrowed`, `returned`, `overdue`.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 <ResponseField name="created_by" type="integer (FK) | null">
   ID of the staff member who created this record (from `AuditMixin`).
@@ -174,8 +186,11 @@ Returns all library fine records ordered by most recently created.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the fine record.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the fine record.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="borrow_record" type="integer (FK)">
   ID of the `BorrowRecord` this fine was levied against.
@@ -229,8 +244,11 @@ Returns all defined bus routes ordered alphabetically by name.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the route.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the route.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="name" type="string">
   Route name (max 200 characters), e.g., `"Northern Zone Route"`.
@@ -292,8 +310,11 @@ Returns all registered vehicles ordered by registration number.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the vehicle record.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the vehicle record.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="registration_number" type="string">
   Official vehicle registration plate (max 20 characters). Must be unique.
@@ -349,8 +370,11 @@ Returns all transport subscriptions ordered by most recently created.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the subscription.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the subscription.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="student" type="integer (FK)">
   ID of the subscribed `StudentProfile`.
@@ -366,6 +390,12 @@ Returns all transport subscriptions ordered by most recently created.
 </ResponseField>
 <ResponseField name="fee_amount" type="string (decimal)">
   Transport fee charged for this subscription.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 <ResponseField name="created_by" type="integer (FK) | null">
   ID of the staff member who created this record (from `AuditMixin`).

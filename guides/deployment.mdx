@@ -1,7 +1,7 @@
 ---
-title: "Deploy Gobarau Academy Backend to Production"
+title: "Deploy Gobarau Academy Backend to Production Server"
 sidebarTitle: "Deployment"
-description: "Production deployment checklist for Gobarau Academy Backend: secure settings, database migration, static files, Gunicorn/uWSGI, and Cloudinary media storage."
+description: "Production deployment checklist for Gobarau Academy Backend: secure settings, database migration, static files, Gunicorn, and Cloudinary media storage."
 ---
 
 Deploying Gobarau Academy Backend to a production environment requires several changes from the default development configuration. The current `settings.py` ships with a hardcoded secret key, `DEBUG = True`, an empty `ALLOWED_HOSTS`, and a local SQLite database — none of which are appropriate for a live server. Work through this checklist in order before exposing the application to the internet.

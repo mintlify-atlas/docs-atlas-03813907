@@ -1,7 +1,7 @@
 ---
-title: "Academics API — Classes, Subjects, Scores, and Tahfeez Tracking"
+title: "Academics API — Classes, Exams, Scores, and Tahfeez"
 sidebarTitle: "Academics"
-description: "REST endpoints for all academic operations: class structure, subject assignments, timetables, student scores, report cards, attendance, exam management, and Qur'an Tahfeez progress."
+description: "REST API for all Gobarau Academy academic operations: class management, subject assignments, timetables, scores, attendance tracking, and Tahfeez progress."
 ---
 
 The Academics module is the academic backbone of the Gobarau Academy platform. It covers the complete lifecycle of learning — from creating class instances and assigning teachers to subjects, through scheduling timetables and recording daily attendance, all the way to scoring assessments, generating termly report cards, and managing exam registrations. Uniquely, the module also includes a dedicated **Tahfeez** sub-system for tracking each student's Qur'an memorization progress juz by juz, with recitation session records supervised by a teacher. All endpoints are prefixed with `/api/academics/` and follow standard DRF router conventions, exposing `GET` (list), `POST` (create), `GET /{id}/` (retrieve), `PUT`/`PATCH` (update), and `DELETE` (destroy) on every resource.

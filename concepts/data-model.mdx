@@ -1,5 +1,5 @@
 ---
-title: "Data Model Overview for Gobarau Academy Backend"
+title: "Gobarau Academy Backend Data Model and Identity Structure"
 sidebarTitle: "Data Model"
 description: "A conceptual overview of the Gobarau Backend data model: how Person, User, StudentProfile, and domain records relate across the ten application modules."
 ---
@@ -61,6 +61,7 @@ class Person(SoftDeleteModel, AuditMixin):
         null=True,
         blank=True,
         related_name="person",
+        db_index=True,
     )
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -291,6 +292,7 @@ class AuditMixin(BaseModel):
         null=True,
         blank=True,
         related_name="+",
+        db_index=True,
     )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -298,6 +300,7 @@ class AuditMixin(BaseModel):
         null=True,
         blank=True,
         related_name="+",
+        db_index=True,
     )
 ```
 

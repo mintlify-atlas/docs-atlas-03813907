@@ -1,7 +1,7 @@
 ---
-title: "Welfare API — Health, Counselling, Discipline, and Interventions"
+title: "Welfare API — Health, Counselling, and Interventions"
 sidebarTitle: "Welfare"
-description: "REST endpoints for student welfare management: health profiles, clinic visits, medications, counselling sessions, disciplinary records, merit tracking, and intervention case management."
+description: "REST API for student welfare: health, clinic visits, counselling, disciplinary records, merit tracking, intervention cases, and periodic welfare reports."
 ---
 
 The Welfare module provides a comprehensive, multi-domain view of student well-being at Gobarau Academy. It spans four interconnected areas: **Health** (medical profiles, clinic visits, and prescribed medications), **Counselling** (one-to-one sessions between students and school counsellors), **Discipline** (incident records and merit/demerit point tracking), and **Interventions** (structured case management for students requiring multi-domain support, alongside extended absence logging and periodic welfare reports). All welfare models inherit from `SoftDeleteModel` and `AuditMixin`, meaning records are never hard-deleted and every access action is audited. All endpoints are prefixed with `/api/welfare/` and follow standard DRF router conventions.

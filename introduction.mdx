@@ -70,7 +70,7 @@ The backend is organized into **10 domain-specific Django apps**, each responsib
 
 All API endpoints require authentication. The backend uses **JWT (JSON Web Tokens)** via `djangorestframework-simplejwt`. Clients authenticate by exchanging credentials for a short-lived access token and a longer-lived refresh token. Every request to a protected endpoint must include the access token in the `Authorization` header as a Bearer token.
 
-Access to individual endpoints is further governed by **role-based access control (RBAC)**. The system defines 10 distinct roles — from `super_admin` and `principal` down to `student`, `parent`, and `nurse` — and three custom permission classes (`IsAdminLevel`, `IsStaffOrAdmin`, `IsOwnStudent`, `IsOwnWard`) that restrict what each role can read or modify. See the [Authentication guide](/authentication) for full details.
+Access to individual endpoints is further governed by **role-based access control (RBAC)**. The system defines 10 distinct roles — from `super_admin` and `principal` down to `student`, `parent`, and `nurse` — and four custom permission classes (`IsAdminLevel`, `IsStaffOrAdmin`, `IsOwnStudent`, `IsOwnWard`) that restrict what each role can read or modify. See the [Authentication guide](/authentication) for full details.
 
 ## Infrastructure Notes
 

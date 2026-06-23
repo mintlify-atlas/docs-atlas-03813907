@@ -1,7 +1,7 @@
 ---
 title: "Accounts API — Users and Person Identity Records"
 sidebarTitle: "Accounts"
-description: "REST endpoints for user accounts and person identity management. Create and manage User authentication records and Person demographic profiles across all roles."
+description: "REST endpoints for user accounts and person identity records. Manage User auth credentials and Person demographic profiles for all roles in the academy."
 ---
 
 The Accounts API is built around a deliberate two-model architecture: **`User`** handles authentication credentials, role assignment, and system access, while **`Person`** stores every piece of demographic and contact information about the human behind that account. A `Person` optionally links to a `User` via a one-to-one relationship — allowing the school to maintain identity records for individuals (such as parents or prospective students) who do not yet have login access. Together these two models form the identity backbone for all other modules in Gobarau Academy.
@@ -64,7 +64,7 @@ The Users endpoint manages `User` records — the authentication and authorisati
   Login password. Should be sent only on creation or password-change requests. Django stores this as a hashed value.
 </ParamField>
 
-<ParamField body="role" type="string" required>
+<ParamField body="role" type="string">
   Role assigned to the user. Controls permission level throughout the API. Must be one of:
 
   | Value | Label |

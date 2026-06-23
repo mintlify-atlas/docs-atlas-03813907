@@ -1,13 +1,13 @@
 ---
 title: "Content API — News, Events, Gallery, Magazine, and Yearbook"
 sidebarTitle: "Content"
-description: "REST endpoints for Gobarau Academy's public-facing content: school news, events calendar, photo gallery albums, magazine issues, annual yearbook, and testimonials."
+description: "REST endpoints for Gobarau Academy public content: school news, events, photo gallery albums, magazine issues, annual yearbook sets, and testimonials."
 ---
 
-The Content module powers the public-facing side of Gobarau Academy's platform — everything a prospective family, current student, or returning alumnus might browse on the school website. It provides structured endpoints for publishing school news articles, listing upcoming events, organising photo galleries, distributing magazine issues and their articles, commemorating graduating classes through the yearbook, and showcasing testimonials from parents and alumni. All `GET` and `retrieve` actions on every content endpoint are fully public (no authentication required), while `POST`, `PUT`, `PATCH`, and `DELETE` operations require an authenticated staff or admin user. Image and file uploads are handled via Cloudinary through Django's `cloudinary_storage` backend.
+The Content module powers the public-facing side of Gobarau Academy's platform — everything a prospective family, current student, or returning alumnus might browse on the school website. It provides structured endpoints for publishing school news articles, listing upcoming events, organising photo galleries, distributing magazine issues and their articles, commemorating graduating classes through the yearbook, and showcasing testimonials from parents and alumni. All `GET` and `retrieve` actions on every content endpoint are fully public (no authentication required) via `ContentPublicReadOnlyModelViewSet`, while `POST`, `PUT`, `PATCH`, and `DELETE` operations require an authenticated staff or admin user. Image and file uploads are handled via Django's file storage backend.
 
 <Note>
-  All image and file fields (`featured_image`, `cover_image`, `image`, `photo`, `pdf_url`, etc.) are stored on **Cloudinary** via `django-cloudinary-storage`. Send these as `multipart/form-data` requests when uploading files, and expect a Cloudinary CDN URL back in the response.
+  All image and file fields (`featured_image`, `cover_image`, `image`, `photo`, `pdf_url`, etc.) are stored via Django's configured file storage. Send these as `multipart/form-data` requests when uploading files.
 </Note>
 
 ---
@@ -50,8 +50,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/news-categories/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the category.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the category.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the category (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="name" type="string">
@@ -67,7 +71,11 @@ curl -X POST https://api.gobarau.edu.ng/api/content/news-categories/ \
 </ResponseField>
 
 <ResponseField name="created_at" type="string (datetime)">
-  Record creation timestamp.
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -105,7 +113,7 @@ News posts are the primary editorial content published on the school website. Po
 </ParamField>
 
 <ParamField body="featured_image" type="file">
-  Optional hero image for the article. Upload as `multipart/form-data`; stored on Cloudinary.
+  Optional hero image for the article. Upload as `multipart/form-data`.
 </ParamField>
 
 <ParamField body="published_at" type="string (datetime)">
@@ -136,8 +144,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/news-posts/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the post.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the post.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the post (from `AuditMixin` → `BaseModel`).
 </ResponseField>
 
 <ResponseField name="title" type="string">
@@ -157,7 +169,7 @@ curl -X POST https://api.gobarau.edu.ng/api/content/news-posts/ \
 </ResponseField>
 
 <ResponseField name="featured_image" type="string | null">
-  Cloudinary CDN URL of the uploaded image, or `null`.
+  URL of the uploaded image, or `null`.
 </ResponseField>
 
 <ResponseField name="published_at" type="string (datetime) | null">
@@ -170,6 +182,22 @@ curl -X POST https://api.gobarau.edu.ng/api/content/news-posts/ \
 
 <ResponseField name="is_published" type="boolean">
   Whether the post is publicly visible.
+</ResponseField>
+
+<ResponseField name="created_by" type="integer | null">
+  Primary key of the `User` who created the post (from `AuditMixin`).
+</ResponseField>
+
+<ResponseField name="updated_by" type="integer | null">
+  Primary key of the `User` who last updated the post (from `AuditMixin`).
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `AuditMixin` → `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `AuditMixin` → `BaseModel`).
 </ResponseField>
 
 ---
@@ -203,7 +231,7 @@ The Events endpoint surfaces upcoming and past school events on the public calen
 </ParamField>
 
 <ParamField body="cover_image" type="file">
-  Optional cover image. Upload as `multipart/form-data`; stored on Cloudinary.
+  Optional cover image. Upload as `multipart/form-data`.
 </ParamField>
 
 <ParamField body="is_public" type="boolean">
@@ -225,8 +253,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/events/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the event.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the event.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the event (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="title" type="string">
@@ -246,11 +278,19 @@ curl -X POST https://api.gobarau.edu.ng/api/content/events/ \
 </ResponseField>
 
 <ResponseField name="cover_image" type="string | null">
-  Cloudinary CDN URL of the cover image, or `null`.
+  URL of the cover image, or `null`.
 </ResponseField>
 
 <ResponseField name="is_public" type="boolean">
   Whether the event is publicly visible.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -280,7 +320,7 @@ Gallery albums are named containers grouping related photos together. An album c
 </ParamField>
 
 <ParamField body="cover_image" type="file">
-  Thumbnail/cover image for the album. Upload as `multipart/form-data`; stored on Cloudinary.
+  Thumbnail/cover image for the album. Upload as `multipart/form-data`.
 </ParamField>
 
 <ParamField body="event" type="integer">
@@ -300,8 +340,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/gallery-albums/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the album.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the album.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the album (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="title" type="string">
@@ -313,7 +357,7 @@ curl -X POST https://api.gobarau.edu.ng/api/content/gallery-albums/ \
 </ResponseField>
 
 <ResponseField name="cover_image" type="string | null">
-  Cloudinary CDN URL of the cover image, or `null`.
+  URL of the cover image, or `null`.
 </ResponseField>
 
 <ResponseField name="event" type="integer | null">
@@ -321,7 +365,11 @@ curl -X POST https://api.gobarau.edu.ng/api/content/gallery-albums/ \
 </ResponseField>
 
 <ResponseField name="created_at" type="string (datetime)">
-  Record creation timestamp.
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -343,7 +391,7 @@ Individual photos belong to a `GalleryAlbum`. Each image has an optional caption
 </ParamField>
 
 <ParamField body="image" type="file" required>
-  The photo to upload. Send as `multipart/form-data`; stored on Cloudinary under `content/gallery/images/`.
+  The photo to upload. Send as `multipart/form-data`; stored under `content/gallery/images/`.
 </ParamField>
 
 <ParamField body="caption" type="string">
@@ -372,8 +420,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/gallery-images/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the gallery image.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the gallery image.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the image (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="album" type="integer">
@@ -381,7 +433,7 @@ curl -X POST https://api.gobarau.edu.ng/api/content/gallery-images/ \
 </ResponseField>
 
 <ResponseField name="image" type="string">
-  Cloudinary CDN URL of the uploaded photo.
+  URL of the uploaded photo.
 </ResponseField>
 
 <ResponseField name="caption" type="string">
@@ -396,11 +448,19 @@ curl -X POST https://api.gobarau.edu.ng/api/content/gallery-images/ \
   Primary key of the uploader `User`, or `null`.
 </ResponseField>
 
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
+</ResponseField>
+
 ---
 
 ## Magazine Issues
 
-Magazine issues represent individual editions of the school's publication. Each issue has a unique number and volume identifier, a publication date, an optional cover image, and an optional PDF file hosted on Cloudinary.
+Magazine issues represent individual editions of the school's publication. Each issue has a unique number and volume identifier, a publication date, an optional cover image, and an optional PDF file.
 
 ### List & Create Magazine Issues
 
@@ -427,11 +487,11 @@ Magazine issues represent individual editions of the school's publication. Each 
 </ParamField>
 
 <ParamField body="cover_image" type="file">
-  Magazine cover image. Upload as `multipart/form-data`; stored on Cloudinary.
+  Magazine cover image. Upload as `multipart/form-data`.
 </ParamField>
 
 <ParamField body="pdf_url" type="file">
-  Full PDF of the magazine issue. Upload as `multipart/form-data`; stored on Cloudinary under `content/magazines/pdfs/`.
+  Full PDF of the magazine issue. Upload as `multipart/form-data`; stored under `content/magazines/pdfs/`.
 </ParamField>
 
 #### Example — Create a magazine issue
@@ -449,8 +509,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/magazine-issues/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the magazine issue.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the magazine issue.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the issue (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="title" type="string">
@@ -470,11 +534,19 @@ curl -X POST https://api.gobarau.edu.ng/api/content/magazine-issues/ \
 </ResponseField>
 
 <ResponseField name="cover_image" type="string | null">
-  Cloudinary CDN URL of the cover image, or `null`.
+  URL of the cover image, or `null`.
 </ResponseField>
 
 <ResponseField name="pdf_url" type="string | null">
-  Cloudinary CDN URL of the PDF file, or `null`.
+  URL of the PDF file, or `null`.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -528,8 +600,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/magazine-articles/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the article.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the article.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the article (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="issue" type="integer">
@@ -550,6 +626,14 @@ curl -X POST https://api.gobarau.edu.ng/api/content/magazine-articles/ \
 
 <ResponseField name="page_number" type="integer">
   Starting page number in the printed issue.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -579,7 +663,7 @@ A yearbook set groups all student entries for a single academic session under on
 </ParamField>
 
 <ParamField body="cover_image" type="file">
-  Cover image for the yearbook. Upload as `multipart/form-data`; stored on Cloudinary.
+  Cover image for the yearbook. Upload as `multipart/form-data`.
 </ParamField>
 
 #### Example — Create a yearbook set
@@ -595,8 +679,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/yearbook-sets/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the yearbook set.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the yearbook set.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the yearbook set (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="session" type="integer">
@@ -612,7 +700,15 @@ curl -X POST https://api.gobarau.edu.ng/api/content/yearbook-sets/ \
 </ResponseField>
 
 <ResponseField name="cover_image" type="string | null">
-  Cloudinary CDN URL of the cover image, or `null`.
+  URL of the cover image, or `null`.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -638,7 +734,7 @@ Each `YearbookEntry` represents a single student's profile page within a yearboo
 </ParamField>
 
 <ParamField body="photo" type="file">
-  Student portrait for the yearbook page. Upload as `multipart/form-data`; stored on Cloudinary under `content/yearbooks/students/`.
+  Student portrait for the yearbook page. Upload as `multipart/form-data`; stored under `content/yearbooks/students/`.
 </ParamField>
 
 <ParamField body="nickname" type="string">
@@ -668,8 +764,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/yearbook-entries/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the yearbook entry.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the yearbook entry.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the entry (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="yearbook_set" type="integer">
@@ -681,7 +781,7 @@ curl -X POST https://api.gobarau.edu.ng/api/content/yearbook-entries/ \
 </ResponseField>
 
 <ResponseField name="photo" type="string | null">
-  Cloudinary CDN URL of the student portrait, or `null`.
+  URL of the student portrait, or `null`.
 </ResponseField>
 
 <ResponseField name="nickname" type="string">
@@ -694,6 +794,14 @@ curl -X POST https://api.gobarau.edu.ng/api/content/yearbook-entries/ \
 
 <ResponseField name="future_aspiration" type="string">
   Student's future aspiration.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>
 
 ---
@@ -723,7 +831,7 @@ Testimonials are endorsements and personal accounts from alumni, parents, or com
 </ParamField>
 
 <ParamField body="photo" type="file">
-  Optional portrait of the testimonial author. Upload as `multipart/form-data`; stored on Cloudinary under `content/testimonials/`.
+  Optional portrait of the testimonial author. Upload as `multipart/form-data`; stored under `content/testimonials/`.
 </ParamField>
 
 <ParamField body="is_featured" type="boolean">
@@ -749,8 +857,12 @@ curl -X POST https://api.gobarau.edu.ng/api/content/testimonials/ \
 
 #### Response Fields
 
-<ResponseField name="id" type="uuid">
-  Unique identifier for the testimonial.
+<ResponseField name="id" type="integer">
+  Auto-incrementing integer primary key for the testimonial.
+</ResponseField>
+
+<ResponseField name="public_id" type="uuid">
+  Unique public UUID identifier for the testimonial (from `BaseModel`).
 </ResponseField>
 
 <ResponseField name="person_name" type="string">
@@ -766,7 +878,7 @@ curl -X POST https://api.gobarau.edu.ng/api/content/testimonials/ \
 </ResponseField>
 
 <ResponseField name="photo" type="string | null">
-  Cloudinary CDN URL of the author's portrait, or `null`.
+  URL of the author's portrait, or `null`.
 </ResponseField>
 
 <ResponseField name="is_featured" type="boolean">
@@ -778,5 +890,9 @@ curl -X POST https://api.gobarau.edu.ng/api/content/testimonials/ \
 </ResponseField>
 
 <ResponseField name="created_at" type="string (datetime)">
-  Record creation timestamp.
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
 </ResponseField>

@@ -1,7 +1,7 @@
 ---
 title: "Administration API — Sessions, Campuses, and Grading"
 sidebarTitle: "Administration"
-description: "REST endpoints for school-wide administration: academic sessions, terms, wings, campuses, departments, class levels, and grading scales. Requires admin-level authentication."
+description: "REST API for school administration: sessions, terms, wings, campuses, departments, class levels, and grading scales. Requires admin-level access."
 ---
 
 The Administration API provides full control over the structural and academic configuration of Gobarau Academy. It covers everything from the singleton school identity record through the entire academic calendar hierarchy (sessions → terms), physical infrastructure (campuses, wings), academic organisation (departments, class levels), and grading policy (grading scales and bands). All nine endpoint groups require an authenticated user whose role is `super_admin`, `principal`, or `vice_principal`.
@@ -30,9 +30,11 @@ Singleton endpoint for the school's global identity record. Only one `SchoolSett
 | Method | URL |
 |--------|-----|
 | `GET` | `/api/administration/school-settings/` |
+| `POST` | `/api/administration/school-settings/` |
 | `GET` | `/api/administration/school-settings/{id}/` |
-| `PATCH` | `/api/administration/school-settings/{id}/` |
 | `PUT` | `/api/administration/school-settings/{id}/` |
+| `PATCH` | `/api/administration/school-settings/{id}/` |
+| `DELETE` | `/api/administration/school-settings/{id}/` |
 
 ### Request Fields
 
@@ -613,7 +615,7 @@ Class levels define the academic grades within the school (e.g. JSS 1, SS 2). Ea
   Integer used to sort class levels in the correct progression. Defaults to `0`.
 </ParamField>
 
-<ParamField body="education_tier" type="string" required>
+<ParamField body="education_tier" type="string">
   Tier this class level belongs to. Must be one of:
 
   | Value | Label |

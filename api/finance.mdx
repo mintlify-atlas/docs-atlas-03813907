@@ -1,7 +1,7 @@
 ---
-title: "Finance API — Fees, Payments, Scholarships, and Marketplace"
+title: "Finance API — Fees, Payments & Marketplace"
 sidebarTitle: "Finance"
-description: "REST endpoints for school finance: fee type definitions, per-class fee structures, student payment records, scholarship funds and recipients, and the school marketplace."
+description: "REST endpoints for school finance: fee types, fee structures, student payments, scholarship funds, scholarship recipients, and the school marketplace."
 ---
 
 The Finance module is the central hub for all monetary operations at Gobarau Academy. It covers the full lifecycle of school fees — from defining fee categories and mapping them to class levels, to recording individual student payments with full audit trails. Beyond fees, the module manages scholarship funds and their recipients, and operates a school marketplace where students can request items, backed by inventory tracking and restock history. All write endpoints require authentication; scholarship and restock operations are restricted to admin-level users.
@@ -22,8 +22,11 @@ Returns a list of all fee type definitions.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the fee type.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the fee type.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier of the fee type.
 </ResponseField>
 <ResponseField name="name" type="string">
   Human-readable name of the fee category (e.g., "Tuition Fee").
@@ -79,8 +82,11 @@ Returns all fee structures across all class levels and sessions.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="fee_type" type="integer (FK)">
   ID of the related `FeeType`.
@@ -96,6 +102,12 @@ Returns all fee structures across all class levels and sessions.
 </ResponseField>
 <ResponseField name="due_date" type="string (date) | null">
   Optional ISO 8601 date by which the fee should be paid. `null` if not set.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 
 #### `POST /api/finance/fee-structures/`
@@ -136,8 +148,11 @@ Returns all payment records ordered by most recent payment date.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the payment record.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the payment record.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="student" type="integer (FK)">
   ID of the `StudentProfile` who made the payment.
@@ -162,6 +177,12 @@ Returns all payment records ordered by most recent payment date.
 </ResponseField>
 <ResponseField name="receipt_number" type="string">
   Unique receipt identifier (max 50 characters).
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 <ResponseField name="created_by" type="integer (FK) | null">
   ID of the `Person` (staff) who created this record (from `AuditMixin`).
@@ -232,8 +253,11 @@ Returns all scholarship funds available for allocation.
 
 **Permissions:** `IsAuthenticated`, `IsAdminLevel`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the scholarship fund.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the scholarship fund.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="name" type="string">
   Name of the scholarship fund (max 200 characters).
@@ -249,6 +273,12 @@ Returns all scholarship funds available for allocation.
 </ResponseField>
 <ResponseField name="is_active" type="boolean">
   Whether recipients can currently be assigned from this fund.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 
 #### `POST /api/finance/scholarship-funds/`
@@ -287,8 +317,11 @@ Returns all scholarship recipient records ordered by most recent award date.
 
 **Permissions:** `IsAuthenticated`, `IsAdminLevel`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="student" type="integer (FK)">
   ID of the `StudentProfile` who received the award.
@@ -301,6 +334,18 @@ Returns all scholarship recipient records ordered by most recent award date.
 </ResponseField>
 <ResponseField name="awarded_date" type="string (date)">
   ISO 8601 date the scholarship was awarded.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
+<ResponseField name="created_by" type="integer (FK) | null">
+  ID of the staff member who created this record (from `AuditMixin`).
+</ResponseField>
+<ResponseField name="updated_by" type="integer (FK) | null">
+  ID of the staff member who last modified this record.
 </ResponseField>
 
 #### `POST /api/finance/scholarship-recipients/`
@@ -336,14 +381,23 @@ Returns all marketplace item categories.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the category.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the category.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="name" type="string">
   Category name, max 100 characters (e.g., "Stationery", "Uniform").
 </ResponseField>
 <ResponseField name="description" type="string">
   Optional description. Defaults to `""`.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 
 #### `POST /api/finance/item-categories/`
@@ -369,8 +423,11 @@ Returns all items listed in the school marketplace.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="name" type="string">
   Item name (max 200 characters).
@@ -389,6 +446,12 @@ Returns all items listed in the school marketplace.
 </ResponseField>
 <ResponseField name="is_available" type="boolean">
   Whether the item is currently visible and requestable by students.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 
 #### `POST /api/finance/marketplace-items/`
@@ -428,8 +491,11 @@ Returns all marketplace requests. The response includes a nested `request_items`
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the request.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the request.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="student" type="integer (FK)">
   ID of the requesting `StudentProfile`.
@@ -440,10 +506,17 @@ Returns all marketplace requests. The response includes a nested `request_items`
 <ResponseField name="status" type="string (enum)">
   Current status. One of: `pending`, `approved`, `fulfilled`, `cancelled`.
 </ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
 <ResponseField name="request_items" type="array">
   Nested list of `RequestItem` objects associated with this request (read-only).
   <Expandable title="RequestItem fields">
-    <ResponseField name="id" type="string (UUID)">Unique identifier of the line item.</ResponseField>
+    <ResponseField name="id" type="integer">Auto-incrementing primary key of the line item.</ResponseField>
+    <ResponseField name="public_id" type="string (UUID)">Globally unique UUID identifier.</ResponseField>
     <ResponseField name="request" type="integer (FK)">ID of the parent `MarketplaceRequest`.</ResponseField>
     <ResponseField name="item" type="integer (FK)">ID of the `MarketplaceItem`.</ResponseField>
     <ResponseField name="quantity" type="integer">Number of units requested.</ResponseField>
@@ -491,8 +564,11 @@ Returns all request line items.
 
 **Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="request" type="integer (FK)">
   ID of the parent `MarketplaceRequest`.
@@ -505,6 +581,12 @@ Returns all request line items.
 </ResponseField>
 <ResponseField name="unit_price" type="string (decimal)">
   Price per unit captured at the time of the request.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
 </ResponseField>
 
 #### `POST /api/finance/request-items/`
@@ -538,8 +620,11 @@ Returns all restock events ordered by most recent first.
 
 **Permissions:** `IsAuthenticated`, `IsAdminLevel`
 
-<ResponseField name="id" type="string (UUID)">
-  Unique identifier of the restock event.
+<ResponseField name="id" type="integer">
+  Auto-incrementing primary key of the restock event.
+</ResponseField>
+<ResponseField name="public_id" type="string (UUID)">
+  Globally unique UUID identifier.
 </ResponseField>
 <ResponseField name="item" type="integer (FK)">
   ID of the `MarketplaceItem` that was restocked.
@@ -555,6 +640,18 @@ Returns all restock events ordered by most recent first.
 </ResponseField>
 <ResponseField name="restocked_at" type="string (ISO 8601 datetime)">
   Timestamp when the restock was recorded. Set automatically (`auto_now_add=True`).
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
+<ResponseField name="created_by" type="integer (FK) | null">
+  ID of the staff member who created this restock record (from `AuditMixin`).
+</ResponseField>
+<ResponseField name="updated_by" type="integer (FK) | null">
+  ID of the staff member who last modified this record.
 </ResponseField>
 
 #### `POST /api/finance/restock-logs/`
