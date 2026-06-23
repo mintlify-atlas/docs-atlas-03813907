@@ -1,0 +1,534 @@
+---
+title: "People API — Student, Teacher, Parent, and Alumni Profiles"
+sidebarTitle: "People"
+description: "REST endpoints for role-based profile management: student enrollments, teacher assignments, parent guardians, alumni records, class enrollments, and ward relationships."
+---
+
+The **People** module is the role layer of Gobarau Academy's identity system. Every individual in the system starts as a `Person` record in the Accounts app; the People app then builds specialised, role-specific profiles on top of that identity. A single person can simultaneously hold a student profile, a parent profile, or eventually an alumni profile — each captured in its own resource with fields relevant to that role. The six endpoints below cover every profile type, as well as the cross-cutting concerns of class enrollment history and parent-student guardian relationships.
+
+<Note>
+  All profile models (`StudentProfile`, `TeacherProfile`, `ParentProfile`, `AlumniProfile`) extend `SoftDeleteModel`. Records are never hard-deleted — they are **archived** (soft-deleted) and can be restored. Filtering on `is_deleted=False` is applied automatically by the default queryset manager.
+</Note>
+
+---
+
+## Authentication & Permissions
+
+All People endpoints require:
+
+- A valid Bearer token in the `Authorization` header.
+- The authenticated user must hold a **Staff** or **Admin** role (`IsStaffOrAdmin` permission class).
+
+```bash
+Authorization: Bearer <your_access_token>
+```
+
+---
+
+## Students
+
+Manage student role profiles. Each `StudentProfile` is linked one-to-one with a `Person` identity record and tracks the student's admission number, enrollment status, and current class placement.
+
+### List / Create Students
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token. Requires `IsStaffOrAdmin` permission.
+</ParamField>
+
+```
+GET  /api/people/students/
+POST /api/people/students/
+```
+
+### Retrieve / Update / Delete Student
+
+```
+GET    /api/people/students/{id}/
+PUT    /api/people/students/{id}/
+PATCH  /api/people/students/{id}/
+DELETE /api/people/students/{id}/
+```
+
+### Request Fields
+
+<ParamField body="person" type="integer" required>
+  Primary key of the linked `Person` (accounts app). One-to-one — each person may have at most one student profile.
+</ParamField>
+
+<ParamField body="admission_number" type="string" required>
+  Unique admission identifier for the student (max 20 characters). Used as the primary human-readable key across the school system.
+</ParamField>
+
+<ParamField body="enrollment_status" type="string" default="active">
+  Current enrollment status of the student. One of:
+
+  | Value          | Label        |
+  |----------------|--------------|
+  | `active`       | Active       |
+  | `graduated`    | Graduated    |
+  | `withdrawn`    | Withdrawn    |
+  | `transferred`  | Transferred  |
+  | `repeated`     | Repeated     |
+</ParamField>
+
+<ParamField body="date_admitted" type="string (date)">
+  ISO 8601 date on which the student was admitted, e.g. `"2024-09-01"`. Optional.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer">
+  Foreign key to `academics.Class`. The class the student is currently placed in. Nullable.
+</ParamField>
+
+<ParamField body="wing" type="integer">
+  Foreign key to `administration.Wing`. The school wing (e.g. Regular, Islamiyyah, Tahfeez). Nullable.
+</ParamField>
+
+<ParamField body="campus" type="integer">
+  Foreign key to `administration.Campus`. The campus the student attends. Nullable.
+</ParamField>
+
+### Example — Create a Student Profile
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/people/students/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "person": 42,
+    "admission_number": "GBA/2024/001",
+    "enrollment_status": "active",
+    "date_admitted": "2024-09-01",
+    "class_assigned": 3,
+    "wing": 1,
+    "campus": 1
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 101,
+  "person": 42,
+  "admission_number": "GBA/2024/001",
+  "enrollment_status": "active",
+  "date_admitted": "2024-09-01",
+  "class_assigned": 3,
+  "wing": 1,
+  "campus": 1,
+  "is_deleted": false,
+  "created_at": "2024-09-01T08:00:00Z",
+  "updated_at": "2024-09-01T08:00:00Z"
+}
+```
+
+---
+
+## Teachers
+
+Manage teacher role profiles. A `TeacherProfile` is linked one-to-one with a `Person` and stores employment details, qualifications, and website visibility settings.
+
+```
+GET  /api/people/teachers/
+POST /api/people/teachers/
+GET    /api/people/teachers/{id}/
+PUT    /api/people/teachers/{id}/
+PATCH  /api/people/teachers/{id}/
+DELETE /api/people/teachers/{id}/
+```
+
+### Request Fields
+
+<ParamField body="person" type="integer" required>
+  Primary key of the linked `Person`. One-to-one — each person may have at most one teacher profile.
+</ParamField>
+
+<ParamField body="staff_number" type="string" required>
+  Unique staff identifier (max 20 characters).
+</ParamField>
+
+<ParamField body="date_employed" type="string (date)">
+  ISO 8601 date of employment commencement. Optional.
+</ParamField>
+
+<ParamField body="qualification" type="string">
+  Highest academic qualification held by the teacher (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="specialization" type="string">
+  Subject area or teaching specialization (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="is_active" type="boolean" default="true">
+  Whether the teacher is currently active in the school. Inactive teachers are excluded from scheduling and timetable assignments.
+</ParamField>
+
+<ParamField body="show_on_website" type="boolean" default="true">
+  Whether the teacher's profile should appear on the school's public website staff listing.
+</ParamField>
+
+### Example — Create a Teacher Profile
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/people/teachers/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "person": 15,
+    "staff_number": "GBA/STF/0042",
+    "date_employed": "2021-01-10",
+    "qualification": "B.Sc. Mathematics",
+    "specialization": "Mathematics",
+    "is_active": true,
+    "show_on_website": true
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 22,
+  "person": 15,
+  "staff_number": "GBA/STF/0042",
+  "date_employed": "2021-01-10",
+  "qualification": "B.Sc. Mathematics",
+  "specialization": "Mathematics",
+  "is_active": true,
+  "show_on_website": true,
+  "is_deleted": false,
+  "created_at": "2021-01-10T09:00:00Z",
+  "updated_at": "2021-01-10T09:00:00Z"
+}
+```
+
+---
+
+## Parents
+
+Manage parent and guardian role profiles. A `ParentProfile` captures a guardian's occupational details and flags whether they are a primary guardian. Parent-to-student links are managed separately via the [Ward Relationships](#ward-relationships) endpoint.
+
+```
+GET  /api/people/parents/
+POST /api/people/parents/
+GET    /api/people/parents/{id}/
+PUT    /api/people/parents/{id}/
+PATCH  /api/people/parents/{id}/
+DELETE /api/people/parents/{id}/
+```
+
+### Request Fields
+
+<ParamField body="person" type="integer" required>
+  Primary key of the linked `Person`. One-to-one — each person may have at most one parent profile.
+</ParamField>
+
+<ParamField body="occupation" type="string">
+  The parent's occupation or job title (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="employer" type="string">
+  The parent's current employer or place of work (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="is_primary_guardian" type="boolean" default="false">
+  Whether this parent is designated as the primary guardian for their ward(s). Note: the primary guardian flag is also set at the `WardRelationship` level for per-student granularity.
+</ParamField>
+
+### Example — Create a Parent Profile
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/people/parents/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "person": 88,
+    "occupation": "Civil Engineer",
+    "employer": "Julius Berger Nigeria PLC",
+    "is_primary_guardian": true
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 55,
+  "person": 88,
+  "occupation": "Civil Engineer",
+  "employer": "Julius Berger Nigeria PLC",
+  "is_primary_guardian": true,
+  "is_deleted": false,
+  "created_at": "2024-08-15T10:30:00Z",
+  "updated_at": "2024-08-15T10:30:00Z"
+}
+```
+
+---
+
+## Alumni
+
+Manage alumni role profiles. An `AlumniProfile` extends a person's identity with post-graduation details including career information, location, mentorship availability, and public recognition flags such as the Wall of Fame.
+
+```
+GET  /api/people/alumni/
+POST /api/people/alumni/
+GET    /api/people/alumni/{id}/
+PUT    /api/people/alumni/{id}/
+PATCH  /api/people/alumni/{id}/
+DELETE /api/people/alumni/{id}/
+```
+
+### Request Fields
+
+<ParamField body="person" type="integer" required>
+  Primary key of the linked `Person`. One-to-one — each person may have at most one alumni profile.
+</ParamField>
+
+<ParamField body="student_profile" type="integer">
+  Optional foreign key to the alumnus's `StudentProfile` (if they were a registered student in the system). One-to-one, nullable.
+</ParamField>
+
+<ParamField body="graduation_year" type="integer" required>
+  Four-digit year of graduation, e.g. `2019`.
+</ParamField>
+
+<ParamField body="final_class" type="integer">
+  Foreign key to `academics.Class` representing the class from which the alumnus graduated. Nullable.
+</ParamField>
+
+<ParamField body="career_field" type="string">
+  Broad career field or industry, e.g. `"Medicine"`, `"Engineering"` (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="current_employer" type="string">
+  Name of the alumnus's current employer (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="university_attended" type="string">
+  University or higher institution attended after Gobarau Academy (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="city" type="string">
+  City of current residence (max 100 characters). Optional.
+</ParamField>
+
+<ParamField body="country" type="string" default="Nigeria">
+  Country of current residence (max 100 characters).
+</ParamField>
+
+<ParamField body="linkedin_url" type="string (URL)">
+  Full LinkedIn profile URL. Optional.
+</ParamField>
+
+<ParamField body="is_available_for_mentorship" type="boolean" default="false">
+  Whether the alumnus has opted in to mentor current students.
+</ParamField>
+
+<ParamField body="mentorship_areas" type="string">
+  Free-text description of areas the alumnus can offer mentorship in. Only meaningful when `is_available_for_mentorship` is `true`.
+</ParamField>
+
+<ParamField body="is_verified" type="boolean" default="false">
+  Whether the alumni record has been verified by school administration. Typically set by staff, not self-reported.
+</ParamField>
+
+<ParamField body="is_on_wall_of_fame" type="boolean" default="false">
+  Whether the alumnus is featured on the school's Wall of Fame. Set by administration.
+</ParamField>
+
+### Example — Create an Alumni Profile
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/people/alumni/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "person": 200,
+    "student_profile": 101,
+    "graduation_year": 2019,
+    "final_class": 12,
+    "career_field": "Medicine",
+    "current_employer": "Aminu Kano Teaching Hospital",
+    "university_attended": "Bayero University Kano",
+    "city": "Kano",
+    "country": "Nigeria",
+    "linkedin_url": "https://linkedin.com/in/example-alumnus",
+    "is_available_for_mentorship": true,
+    "mentorship_areas": "Medical school applications, study habits",
+    "is_verified": false,
+    "is_on_wall_of_fame": false
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 7,
+  "person": 200,
+  "student_profile": 101,
+  "graduation_year": 2019,
+  "final_class": 12,
+  "career_field": "Medicine",
+  "current_employer": "Aminu Kano Teaching Hospital",
+  "university_attended": "Bayero University Kano",
+  "city": "Kano",
+  "country": "Nigeria",
+  "linkedin_url": "https://linkedin.com/in/example-alumnus",
+  "is_available_for_mentorship": true,
+  "mentorship_areas": "Medical school applications, study habits",
+  "is_verified": false,
+  "is_on_wall_of_fame": false,
+  "is_deleted": false,
+  "created_at": "2024-07-10T14:00:00Z",
+  "updated_at": "2024-07-10T14:00:00Z"
+}
+```
+
+---
+
+## Enrollments
+
+Track a student's class enrollment across academic sessions and terms. Each `ClassEnrollment` record anchors a student to a specific class for a given session and term. The combination of `student`, `class_assigned`, `session`, and `term` must be unique — a student cannot be enrolled in the same class twice within the same session-term.
+
+```
+GET  /api/people/enrollments/
+POST /api/people/enrollments/
+GET    /api/people/enrollments/{id}/
+PUT    /api/people/enrollments/{id}/
+PATCH  /api/people/enrollments/{id}/
+DELETE /api/people/enrollments/{id}/
+```
+
+<Warning>
+  The `unique_together` constraint on `(student, class_assigned, session, term)` means attempting to create a duplicate enrollment will return a **400 Bad Request** with a validation error. Always verify the student is not already enrolled before posting.
+</Warning>
+
+### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key to `StudentProfile`. The student being enrolled.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key to `academics.Class`. The class the student is enrolling into.
+</ParamField>
+
+<ParamField body="session" type="integer" required>
+  Foreign key to `administration.AcademicSession`. The academic session for this enrollment.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key to `administration.Term`. The term within the session.
+</ParamField>
+
+<ParamField body="is_active" type="boolean" default="true">
+  Whether this enrollment is currently active. Set to `false` to deactivate without deleting the historical record.
+</ParamField>
+
+<Note>
+  `date_enrolled` is set automatically to the current date (`auto_now_add=True`) and is not accepted in the request body.
+</Note>
+
+### Example — Create an Enrollment
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/people/enrollments/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 101,
+    "class_assigned": 3,
+    "session": 5,
+    "term": 2,
+    "is_active": true
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 350,
+  "student": 101,
+  "class_assigned": 3,
+  "session": 5,
+  "term": 2,
+  "date_enrolled": "2024-09-01",
+  "is_active": true,
+  "created_at": "2024-09-01T07:45:00Z",
+  "updated_at": "2024-09-01T07:45:00Z"
+}
+```
+
+---
+
+## Ward Relationships
+
+Define and manage the guardian-to-student relationships between parent profiles and student profiles. A `WardRelationship` links a `ParentProfile` to a `StudentProfile` with metadata about the relationship type and pickup authorisation. The combination of `parent` and `student` must be unique.
+
+```
+GET  /api/people/ward-relationships/
+POST /api/people/ward-relationships/
+GET    /api/people/ward-relationships/{id}/
+PUT    /api/people/ward-relationships/{id}/
+PATCH  /api/people/ward-relationships/{id}/
+DELETE /api/people/ward-relationships/{id}/
+```
+
+<Warning>
+  The `unique_together` constraint on `(parent, student)` prevents duplicate guardian links. Attempting to create a second relationship between the same parent and student returns a **400 Bad Request**.
+</Warning>
+
+### Request Fields
+
+<ParamField body="parent" type="integer" required>
+  Foreign key to `ParentProfile`. The guardian in the relationship.
+</ParamField>
+
+<ParamField body="student" type="integer" required>
+  Foreign key to `StudentProfile`. The ward (student) in the relationship.
+</ParamField>
+
+<ParamField body="relationship_type" type="string">
+  A free-text label describing the relationship, e.g. `"Father"`, `"Mother"`, `"Uncle"` (max 50 characters). Optional.
+</ParamField>
+
+<ParamField body="is_primary_guardian" type="boolean" default="false">
+  Whether this parent is the primary guardian for this particular student. Multiple parents can be linked to the same student, but typically only one should be marked as primary.
+</ParamField>
+
+<ParamField body="can_pickup" type="boolean" default="true">
+  Whether this guardian is authorised to collect the student from school. This flag is used by the gate and attendance management systems.
+</ParamField>
+
+### Example — Create a Ward Relationship
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/people/ward-relationships/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parent": 55,
+    "student": 101,
+    "relationship_type": "Father",
+    "is_primary_guardian": true,
+    "can_pickup": true
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 78,
+  "parent": 55,
+  "student": 101,
+  "relationship_type": "Father",
+  "is_primary_guardian": true,
+  "can_pickup": true,
+  "created_at": "2024-09-01T08:10:00Z",
+  "updated_at": "2024-09-01T08:10:00Z"
+}
+```

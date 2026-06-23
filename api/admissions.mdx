@@ -1,0 +1,478 @@
+---
+title: "Admissions API — Applications, Entrance Exams, and Alumni Registration"
+sidebarTitle: "Admissions"
+description: "REST endpoints for the Gobarau Academy admissions pipeline: intake applications, entrance exam records, and alumni self-registration for the alumni directory."
+---
+
+The **Admissions** module manages the full pipeline for bringing new students into Gobarau Academy and for registering former students in the alumni directory. It provides three focused resources: `Application` records capture a prospective student's personal details and the class they are applying for; `EntranceExam` records attach exam scheduling and scoring information to an application; and `AlumniRegistration` records allow graduates to submit their post-school details for inclusion in the alumni directory pending staff review. Together, these endpoints support the end-to-end flow from first inquiry to official enrollment and beyond.
+
+<Note>
+  All three admissions endpoints require an authenticated user with **Staff** or **Admin** privileges (`IsStaffOrAdmin` permission class). Include a valid Bearer token in every request.
+</Note>
+
+---
+
+## Authentication & Permissions
+
+```bash
+Authorization: Bearer <your_access_token>
+```
+
+All Admissions endpoints enforce `IsAuthenticated` and `IsStaffOrAdmin`. Unauthenticated requests receive `401 Unauthorized`; authenticated non-staff users receive `403 Forbidden`.
+
+---
+
+## Applications
+
+The `Application` resource is the entry point for the admissions pipeline. Each application captures the prospective student's biographical information, the class they are applying for, and the academic session. Once submitted, applications move through a review workflow managed by staff.
+
+### List / Create Applications
+
+```
+GET  /api/admissions/applications/
+POST /api/admissions/applications/
+```
+
+### Retrieve / Update / Delete Application
+
+```
+GET    /api/admissions/applications/{id}/
+PUT    /api/admissions/applications/{id}/
+PATCH  /api/admissions/applications/{id}/
+DELETE /api/admissions/applications/{id}/
+```
+
+### Request Fields
+
+<ParamField body="applicant_name" type="string" required>
+  Full name of the prospective student (max 200 characters).
+</ParamField>
+
+<ParamField body="date_of_birth" type="string (date)">
+  Applicant's date of birth in ISO 8601 format, e.g. `"2010-03-15"`. Optional.
+</ParamField>
+
+<ParamField body="gender" type="string">
+  Applicant's gender. One of:
+
+  | Value | Label  |
+  |-------|--------|
+  | `M`   | Male   |
+  | `F`   | Female |
+
+  Defaults to an empty string if not provided.
+</ParamField>
+
+<ParamField body="phone" type="string">
+  Contact phone number (max 20 characters). Optional.
+</ParamField>
+
+<ParamField body="email" type="string (email)">
+  Contact email address. Optional.
+</ParamField>
+
+<ParamField body="address" type="string">
+  Residential address of the applicant or family. Optional.
+</ParamField>
+
+<ParamField body="state_of_origin" type="string">
+  State of origin using the Nigerian state slug, e.g. `"kano"`, `"lagos"`, `"fct"`. Must be one of the 37 Nigerian states/FCT values. Optional.
+</ParamField>
+
+<ParamField body="lga" type="string">
+  Local Government Area of origin (max 100 characters). Optional.
+</ParamField>
+
+<ParamField body="religion" type="string">
+  Applicant's religion (max 50 characters). Optional.
+</ParamField>
+
+<ParamField body="wing" type="integer">
+  Foreign key to `administration.Wing`. The school wing the applicant is applying to (e.g. Regular, Islamiyyah, Tahfeez). Nullable.
+</ParamField>
+
+<ParamField body="class_applied_for" type="integer">
+  Foreign key to `administration.ClassLevel`. The class level the applicant is seeking entry into. Nullable.
+</ParamField>
+
+<ParamField body="session" type="integer" required>
+  Foreign key to `administration.AcademicSession`. The intake session for this application.
+</ParamField>
+
+<ParamField body="status" type="string" default="pending">
+  Current status of the application in the review workflow. One of:
+
+  | Value        | Label       |
+  |--------------|-------------|
+  | `pending`    | Pending     |
+  | `accepted`   | Accepted    |
+  | `rejected`   | Rejected    |
+  | `waitlisted` | Waitlisted  |
+</ParamField>
+
+<ParamField body="reviewed_by" type="integer">
+  Foreign key to `accounts.User`. The staff member who reviewed this application. Nullable — set automatically during the review process.
+</ParamField>
+
+<ParamField body="reviewed_at" type="string (datetime)">
+  ISO 8601 datetime of when the application was reviewed. Nullable — set automatically during the review process.
+</ParamField>
+
+<Note>
+  `submitted_at` is set automatically to the current timestamp (`auto_now_add=True`) and cannot be provided in the request body.
+</Note>
+
+### Example — Create an Application
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/admissions/applications/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "applicant_name": "Aisha Musa Umar",
+    "date_of_birth": "2011-06-20",
+    "gender": "F",
+    "phone": "08012345678",
+    "email": "aisha.parent@example.com",
+    "address": "12 Danmarna Road, Kano",
+    "state_of_origin": "kano",
+    "lga": "Kano Municipal",
+    "religion": "Islam",
+    "wing": 1,
+    "class_applied_for": 2,
+    "session": 5,
+    "status": "pending"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 204,
+  "applicant_name": "Aisha Musa Umar",
+  "date_of_birth": "2011-06-20",
+  "gender": "F",
+  "phone": "08012345678",
+  "email": "aisha.parent@example.com",
+  "address": "12 Danmarna Road, Kano",
+  "state_of_origin": "kano",
+  "lga": "Kano Municipal",
+  "religion": "Islam",
+  "wing": 1,
+  "class_applied_for": 2,
+  "session": 5,
+  "status": "pending",
+  "submitted_at": "2024-11-05T09:22:14Z",
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "created_at": "2024-11-05T09:22:14Z",
+  "updated_at": "2024-11-05T09:22:14Z"
+}
+```
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key for the application.
+</ResponseField>
+
+<ResponseField name="applicant_name" type="string">
+  Full name of the applicant as submitted.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current pipeline status: `pending`, `accepted`, `rejected`, or `waitlisted`.
+</ResponseField>
+
+<ResponseField name="submitted_at" type="string (datetime)">
+  Server-assigned timestamp of when the application was created.
+</ResponseField>
+
+<ResponseField name="reviewed_by" type="integer | null">
+  PK of the reviewing staff member, or `null` if not yet reviewed.
+</ResponseField>
+
+<ResponseField name="reviewed_at" type="string (datetime) | null">
+  Timestamp of the review action, or `null` if not yet reviewed.
+</ResponseField>
+
+---
+
+## Application Workflow
+
+Applications progress through the following status states:
+
+```
+pending ──► accepted
+       ──► rejected
+       ──► waitlisted
+```
+
+<Expandable title="Status descriptions">
+
+| Status       | Meaning                                                                                    |
+|--------------|--------------------------------------------------------------------------------------------|
+| `pending`    | Default state on creation. The application has been received and is awaiting staff review. |
+| `accepted`   | The applicant has been offered a place. Staff can then create a `Person` and `StudentProfile` to onboard them. |
+| `rejected`   | The application was reviewed and declined. The applicant is notified and no further action is required. |
+| `waitlisted` | The applicant may be offered a place if accepted applicants do not take up their offers. |
+
+</Expandable>
+
+To advance an application through the workflow, use a `PATCH` request to update the `status`, `reviewed_by`, and `reviewed_at` fields:
+
+```bash
+curl -X PATCH https://api.gobarau.edu.ng/api/admissions/applications/204/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "accepted",
+    "reviewed_by": 3,
+    "reviewed_at": "2024-11-10T14:00:00Z"
+  }'
+```
+
+<Tip>
+  For bulk review of applications — for example, accepting an entire intake cohort or filtering by wing and session — use the **Django Admin** at `/admin/admissions/application/`. The admin list view supports actions such as "Mark selected as accepted" and filters by `status`, `session`, and `wing`, making it far more efficient than individual API calls for large batches.
+</Tip>
+
+---
+
+## Entrance Exams
+
+The `EntranceExam` resource links exam scheduling and outcome data to a specific application. An application can have multiple exam records (e.g. rescheduled sittings), each with its own date, venue, score, and pass/fail result.
+
+```
+GET  /api/admissions/entrance-exams/
+POST /api/admissions/entrance-exams/
+GET    /api/admissions/entrance-exams/{id}/
+PUT    /api/admissions/entrance-exams/{id}/
+PATCH  /api/admissions/entrance-exams/{id}/
+DELETE /api/admissions/entrance-exams/{id}/
+```
+
+### Request Fields
+
+<ParamField body="application" type="integer" required>
+  Foreign key to `admissions.Application`. The application this exam record is associated with.
+</ParamField>
+
+<ParamField body="exam_date" type="string (date)" required>
+  ISO 8601 date on which the exam is scheduled or was held, e.g. `"2024-11-20"`.
+</ParamField>
+
+<ParamField body="venue" type="string" required>
+  Venue or room where the exam is held (max 200 characters), e.g. `"Main Hall, Block A"`.
+</ParamField>
+
+<ParamField body="score" type="number (decimal)">
+  The applicant's exam score (up to 5 digits, 2 decimal places), e.g. `78.50`. Nullable — may be populated after the exam is marked.
+</ParamField>
+
+<ParamField body="is_passed" type="boolean" default="false">
+  Whether the applicant met the passing threshold for this exam. Updated by staff after scoring is complete.
+</ParamField>
+
+### Example — Create an Entrance Exam Record
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/admissions/entrance-exams/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "application": 204,
+    "exam_date": "2024-11-20",
+    "venue": "Main Hall, Block A",
+    "score": null,
+    "is_passed": false
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 89,
+  "application": 204,
+  "exam_date": "2024-11-20",
+  "venue": "Main Hall, Block A",
+  "score": null,
+  "is_passed": false,
+  "created_at": "2024-11-05T10:00:00Z",
+  "updated_at": "2024-11-05T10:00:00Z"
+}
+```
+
+### Example — Record Exam Results
+
+After the exam has been marked, update the record with the score and pass/fail outcome:
+
+```bash
+curl -X PATCH https://api.gobarau.edu.ng/api/admissions/entrance-exams/89/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "score": 82.00,
+    "is_passed": true
+  }'
+```
+
+---
+
+## Alumni Registrations
+
+The `AlumniRegistration` resource allows former students to submit their details for inclusion in the school's official alumni directory. Submissions are held in a `pending` state until reviewed and approved (or rejected) by administration. Upon approval, staff can use the data to create or update an `AlumniProfile` in the People app.
+
+```
+GET  /api/admissions/alumni-registrations/
+POST /api/admissions/alumni-registrations/
+GET    /api/admissions/alumni-registrations/{id}/
+PUT    /api/admissions/alumni-registrations/{id}/
+PATCH  /api/admissions/alumni-registrations/{id}/
+DELETE /api/admissions/alumni-registrations/{id}/
+```
+
+### Request Fields
+
+<ParamField body="student_profile" type="integer" required>
+  Foreign key to `people.StudentProfile`. Links the registration to the alumnus's original student record in the system.
+</ParamField>
+
+<ParamField body="graduation_year" type="integer" required>
+  Four-digit year of graduation, e.g. `2020`.
+</ParamField>
+
+<ParamField body="career_field" type="string">
+  Broad industry or career field, e.g. `"Law"`, `"Technology"` (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="current_employer" type="string">
+  Name of current employer (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="university_attended" type="string">
+  Higher institution attended after Gobarau Academy (max 200 characters). Optional.
+</ParamField>
+
+<ParamField body="city" type="string">
+  City of current residence (max 100 characters). Optional.
+</ParamField>
+
+<ParamField body="country" type="string" default="Nigeria">
+  Country of current residence (max 100 characters).
+</ParamField>
+
+<ParamField body="linkedin_url" type="string (URL)">
+  Full LinkedIn profile URL. Optional.
+</ParamField>
+
+<ParamField body="message" type="string">
+  A personal message from the alumnus to the school or to current students. Optional, free-text.
+</ParamField>
+
+<ParamField body="status" type="string" default="pending">
+  Review status of this registration. One of:
+
+  | Value      | Label    |
+  |------------|----------|
+  | `pending`  | Pending  |
+  | `approved` | Approved |
+  | `rejected` | Rejected |
+</ParamField>
+
+<ParamField body="reviewed_by" type="integer">
+  Foreign key to `accounts.User`. The staff member who reviewed the registration. Nullable.
+</ParamField>
+
+<ParamField body="reviewed_at" type="string (datetime)">
+  ISO 8601 datetime of the review action. Nullable.
+</ParamField>
+
+<Note>
+  `submitted_at` is set automatically on creation and is not writable via the API.
+</Note>
+
+### Example — Submit an Alumni Registration
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/admissions/alumni-registrations/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student_profile": 101,
+    "graduation_year": 2019,
+    "career_field": "Medicine",
+    "current_employer": "Aminu Kano Teaching Hospital",
+    "university_attended": "Bayero University Kano",
+    "city": "Kano",
+    "country": "Nigeria",
+    "linkedin_url": "https://linkedin.com/in/example-alumnus",
+    "message": "Gobarau Academy gave me the discipline and foundation to succeed. I am proud to give back.",
+    "status": "pending"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 34,
+  "student_profile": 101,
+  "graduation_year": 2019,
+  "career_field": "Medicine",
+  "current_employer": "Aminu Kano Teaching Hospital",
+  "university_attended": "Bayero University Kano",
+  "city": "Kano",
+  "country": "Nigeria",
+  "linkedin_url": "https://linkedin.com/in/example-alumnus",
+  "message": "Gobarau Academy gave me the discipline and foundation to succeed. I am proud to give back.",
+  "status": "pending",
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "submitted_at": "2024-10-12T16:45:00Z",
+  "created_at": "2024-10-12T16:45:00Z",
+  "updated_at": "2024-10-12T16:45:00Z"
+}
+```
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key for the alumni registration.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current review status: `pending`, `approved`, or `rejected`.
+</ResponseField>
+
+<ResponseField name="submitted_at" type="string (datetime)">
+  Server-assigned timestamp when the registration was submitted.
+</ResponseField>
+
+<ResponseField name="reviewed_by" type="integer | null">
+  PK of the reviewing staff member, or `null` if not yet reviewed.
+</ResponseField>
+
+<ResponseField name="reviewed_at" type="string (datetime) | null">
+  Timestamp of the review decision, or `null` if not yet reviewed.
+</ResponseField>
+
+### Approving a Registration
+
+Once a registration is approved, staff should also create or update the corresponding `AlumniProfile` in the [People API](/api/people#alumni) to make the alumnus visible in the main alumni directory.
+
+```bash
+curl -X PATCH https://api.gobarau.edu.ng/api/admissions/alumni-registrations/34/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "approved",
+    "reviewed_by": 3,
+    "reviewed_at": "2024-10-15T09:00:00Z"
+  }'
+```
+
+<Tip>
+  Use the **Django Admin** at `/admin/admissions/alumniregistration/` to bulk-review pending alumni registrations. The admin list view supports filtering by `status`, `graduation_year`, and `submitted_at`, and provides side-by-side comparison views that are much faster than reviewing submissions one at a time through the API.
+</Tip>

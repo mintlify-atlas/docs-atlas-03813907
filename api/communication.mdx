@@ -1,0 +1,552 @@
+---
+title: "Communication API — Announcements, Notifications, and Messaging"
+sidebarTitle: "Communication"
+description: "REST endpoints for school communication: role-targeted announcements, per-user notifications, direct messages, student Q&A board, and alumni career talk sessions."
+---
+
+The Communication module is the backbone of information exchange across the Gobarau Academy platform. It provides structured channels for administrators and staff to broadcast role-targeted announcements, deliver automated per-user notifications, facilitate private direct messages between users, host a student Q&A board for academic queries, and coordinate alumni career talk sessions. All endpoints sit under the `/api/communication/` prefix and require authentication; write operations on announcements, questions, and career talk sessions additionally require staff or admin-level permissions.
+
+---
+
+## Announcements
+
+Announcements are school-wide broadcasts targeted at a specific role group. They can be pinned for prominence and optionally given an expiry date so they disappear from feeds automatically.
+
+<Note>
+  The `audience` field determines which role group sees an announcement. Only users whose account role matches the value will receive it — so a `student` announcement will not appear in a teacher's feed. Choose the audience value carefully before publishing.
+</Note>
+
+### List & Create Announcements
+
+<ParamField path="method" type="string">GET · POST</ParamField>
+
+**Endpoint:** `GET/POST /api/communication/announcements/`
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="title" type="string" required>
+  Short descriptive title of the announcement (max 200 characters).
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  Full announcement body text.
+</ParamField>
+
+<ParamField body="audience" type="string" required>
+  The role group this announcement targets. Must be one of the `RoleChoices` values:
+
+  | Value | Label |
+  |---|---|
+  | `super_admin` | Super Admin |
+  | `principal` | Principal |
+  | `vice_principal` | Vice Principal |
+  | `bursar` | Bursar |
+  | `teacher` | Teacher |
+  | `student` | Student |
+  | `parent` | Parent |
+  | `alumni` | Alumni |
+  | `nurse` | School Nurse |
+  | `counsellor` | Counsellor |
+</ParamField>
+
+<ParamField body="published_at" type="string (datetime)">
+  ISO 8601 datetime when the announcement goes live. If omitted the announcement is saved as a draft.
+</ParamField>
+
+<ParamField body="is_pinned" type="boolean">
+  When `true`, the announcement is pinned to the top of the audience's feed. Defaults to `false`.
+</ParamField>
+
+<ParamField body="expires_at" type="string (datetime)">
+  Optional ISO 8601 datetime after which the announcement is no longer surfaced. Leave blank for permanent announcements.
+</ParamField>
+
+#### Example — Create a pinned student announcement
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/communication/announcements/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "End-of-Term Examination Timetable Released",
+    "body": "The timetable for the First Term examinations has been published on the noticeboard. All students are advised to collect their copies from the admin office.",
+    "audience": "student",
+    "published_at": "2025-01-15T08:00:00Z",
+    "is_pinned": true,
+    "expires_at": "2025-02-01T00:00:00Z"
+  }'
+```
+
+#### Example Response
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "title": "End-of-Term Examination Timetable Released",
+  "body": "The timetable for the First Term examinations has been published on the noticeboard. All students are advised to collect their copies from the admin office.",
+  "audience": "student",
+  "published_at": "2025-01-15T08:00:00Z",
+  "is_pinned": true,
+  "expires_at": "2025-02-01T00:00:00Z",
+  "created_at": "2025-01-14T18:32:00Z",
+  "updated_at": "2025-01-14T18:32:00Z"
+}
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the announcement.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Announcement title.
+</ResponseField>
+
+<ResponseField name="body" type="string">
+  Full body text of the announcement.
+</ResponseField>
+
+<ResponseField name="audience" type="string">
+  Role group the announcement targets.
+</ResponseField>
+
+<ResponseField name="published_at" type="string (datetime)">
+  Datetime the announcement was or will be published.
+</ResponseField>
+
+<ResponseField name="is_pinned" type="boolean">
+  Whether the announcement is pinned at the top of the feed.
+</ResponseField>
+
+<ResponseField name="expires_at" type="string (datetime) | null">
+  Datetime the announcement expires, or `null` if it never expires.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp (from `BaseModel`).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp (from `BaseModel`).
+</ResponseField>
+
+---
+
+## Notifications
+
+Notifications are per-user system events delivered automatically by the platform. Each notification carries a type, a title, a message body, and an optional deep-link URL. Users only see their own notifications; admin roles (`super_admin`, `principal`, `vice_principal`) can see all.
+
+<Tip>
+  Leverage notifications for automated system events — payment confirmations, grade postings, new assignment uploads, attendance alerts, and welfare case updates. Emit a notification with the appropriate `notification_type` immediately after the relevant action so users receive real-time updates without polling other endpoints.
+</Tip>
+
+### List & Create Notifications
+
+**Endpoint:** `GET/POST /api/communication/notifications/`
+
+**Permissions:** `IsAuthenticated` (scoped — users see only their own records unless admin)
+
+#### Request Fields (POST)
+
+<ParamField body="recipient" type="integer" required>
+  Primary key of the `User` who should receive this notification.
+</ParamField>
+
+<ParamField body="notification_type" type="string" required>
+  Classification of the event. One of:
+
+  | Value | Label |
+  |---|---|
+  | `system` | System |
+  | `payment` | Payment |
+  | `academic` | Academic |
+  | `attendance` | Attendance |
+  | `welfare` | Welfare |
+  | `message` | Message |
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  Short notification title (max 200 characters).
+</ParamField>
+
+<ParamField body="message" type="string" required>
+  Full notification message body.
+</ParamField>
+
+<ParamField body="is_read" type="boolean">
+  Read status of the notification. Defaults to `false`.
+</ParamField>
+
+<ParamField body="read_at" type="string (datetime)">
+  Datetime the notification was read. Should be set alongside `is_read: true`.
+</ParamField>
+
+<ParamField body="link" type="string (url)">
+  Optional deep-link URL for the user to navigate to the related resource (e.g. a payment invoice or grade report).
+</ParamField>
+
+#### Example — Create a payment notification
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/communication/notifications/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient": 42,
+    "notification_type": "payment",
+    "title": "School Fees Payment Received",
+    "message": "Your payment of ₦85,000 for the First Term 2024/2025 session has been confirmed.",
+    "link": "https://api.gobarau.edu.ng/api/finance/payment-records/101/"
+  }'
+```
+
+#### Mark a Notification as Read (PATCH)
+
+Use a `PATCH` request to the detail endpoint to update read status without replacing the full object.
+
+```bash
+curl -X PATCH https://api.gobarau.edu.ng/api/communication/notifications/7d3e9f12-ab34-5678-cdef-901234567890/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "is_read": true,
+    "read_at": "2025-01-20T10:15:30Z"
+  }'
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the notification.
+</ResponseField>
+
+<ResponseField name="recipient" type="integer">
+  Primary key of the recipient `User`.
+</ResponseField>
+
+<ResponseField name="notification_type" type="string">
+  Type classification of the notification.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Short notification title.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Full notification message.
+</ResponseField>
+
+<ResponseField name="is_read" type="boolean">
+  Whether the user has read the notification.
+</ResponseField>
+
+<ResponseField name="read_at" type="string (datetime) | null">
+  Datetime it was read, or `null` if unread.
+</ResponseField>
+
+<ResponseField name="link" type="string">
+  Deep-link URL for the related resource. Empty string if not applicable.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp.
+</ResponseField>
+
+---
+
+## Messages
+
+Messages provide a direct 1-to-1 inbox between any two platform users (staff, students, parents, etc.). Each message has a sender, a recipient, an optional subject line, and a body. Users see only conversations they are part of; admin roles can access all messages.
+
+### List & Create Messages
+
+**Endpoint:** `GET/POST /api/communication/messages/`
+
+**Permissions:** `IsAuthenticated` (scoped — users see only sent/received messages unless admin)
+
+#### Request Fields (POST)
+
+<ParamField body="sender" type="integer" required>
+  Primary key of the sending `User`.
+</ParamField>
+
+<ParamField body="recipient" type="integer" required>
+  Primary key of the receiving `User`.
+</ParamField>
+
+<ParamField body="subject" type="string">
+  Optional message subject line (max 200 characters). Defaults to an empty string.
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  Full message body.
+</ParamField>
+
+<ParamField body="is_read" type="boolean">
+  Whether the recipient has read the message. Defaults to `false`; the system normally manages this field.
+</ParamField>
+
+<ParamField body="read_at" type="string (datetime)">
+  Datetime the message was read by the recipient.
+</ParamField>
+
+#### Example — Send a direct message
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/communication/messages/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender": 15,
+    "recipient": 42,
+    "subject": "Regarding Your Child's Progress",
+    "body": "Dear Mr. Sani, I would like to schedule a meeting to discuss Aisha's academic performance this term. Please let me know your availability."
+  }'
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the message.
+</ResponseField>
+
+<ResponseField name="sender" type="integer">
+  Primary key of the sender `User`.
+</ResponseField>
+
+<ResponseField name="recipient" type="integer">
+  Primary key of the recipient `User`.
+</ResponseField>
+
+<ResponseField name="subject" type="string">
+  Message subject. Empty string if not provided.
+</ResponseField>
+
+<ResponseField name="body" type="string">
+  Full message body.
+</ResponseField>
+
+<ResponseField name="sent_at" type="string (datetime)">
+  Datetime the message was sent (`auto_now_add`).
+</ResponseField>
+
+<ResponseField name="is_read" type="boolean">
+  Whether the recipient has read the message.
+</ResponseField>
+
+<ResponseField name="read_at" type="string (datetime) | null">
+  Datetime the message was read, or `null` if unread.
+</ResponseField>
+
+---
+
+## Questions
+
+The Questions endpoint powers the student Q&A board. Students post questions against a specific academic subject, and any authenticated staff member can provide an answer. Questions are ordered by newest first.
+
+### List & Create Questions
+
+**Endpoint:** `GET/POST /api/communication/questions/`
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="student" type="integer" required>
+  Primary key of the `StudentProfile` asking the question.
+</ParamField>
+
+<ParamField body="subject" type="integer" required>
+  Primary key of the `Subject` the question relates to.
+</ParamField>
+
+<ParamField body="question_text" type="string" required>
+  The full text of the student's question.
+</ParamField>
+
+<ParamField body="answer_text" type="string">
+  Text of the answer. Leave blank when first posting; a teacher fills this in via PATCH.
+</ParamField>
+
+<ParamField body="answered_by" type="integer">
+  Primary key of the `User` (teacher) who provided the answer. Set alongside `answer_text`.
+</ParamField>
+
+<ParamField body="answered_at" type="string (datetime)">
+  Datetime the question was answered.
+</ParamField>
+
+#### Example — Post a question
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/communication/questions/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 88,
+    "subject": 5,
+    "question_text": "Can you explain the difference between mitosis and meiosis with respect to chromosome number?"
+  }'
+```
+
+#### Example — Teacher answers a question (PATCH)
+
+Use a `PATCH` request to the detail endpoint to add an answer to an existing question.
+
+```bash
+curl -X PATCH https://api.gobarau.edu.ng/api/communication/questions/f1e2d3c4-b5a6-7890-fedc-ba0987654321/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "answer_text": "Mitosis produces two genetically identical daughter cells with the same chromosome count as the parent cell (diploid), while meiosis produces four genetically unique daughter cells with half the chromosome count (haploid). Meiosis is used for sexual reproduction; mitosis is used for growth and repair.",
+    "answered_by": 15,
+    "answered_at": "2025-01-20T14:00:00Z"
+  }'
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the question.
+</ResponseField>
+
+<ResponseField name="student" type="integer">
+  Primary key of the `StudentProfile`.
+</ResponseField>
+
+<ResponseField name="subject" type="integer">
+  Primary key of the related `Subject`.
+</ResponseField>
+
+<ResponseField name="question_text" type="string">
+  The student's question.
+</ResponseField>
+
+<ResponseField name="asked_at" type="string (datetime)">
+  Datetime the question was submitted (`auto_now_add`).
+</ResponseField>
+
+<ResponseField name="answer_text" type="string">
+  The answer provided by staff. Empty string until answered.
+</ResponseField>
+
+<ResponseField name="answered_by" type="integer | null">
+  Primary key of the answering `User`, or `null` if unanswered.
+</ResponseField>
+
+<ResponseField name="answered_at" type="string (datetime) | null">
+  Datetime the answer was given, or `null` if unanswered.
+</ResponseField>
+
+---
+
+## Career Talk Sessions
+
+Career talk sessions are alumni-led events where graduates return to speak about their professional journeys. Each session is linked to an `AlumniProfile`, has a date/time/venue, and supports attendee cap and registration deadline settings.
+
+### List & Create Career Talk Sessions
+
+**Endpoint:** `GET/POST /api/communication/career-talk-sessions/`
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="title" type="string" required>
+  Title of the career talk session (max 200 characters).
+</ParamField>
+
+<ParamField body="description" type="string">
+  Detailed description of the session topic and speaker background. Defaults to empty string.
+</ParamField>
+
+<ParamField body="alumni" type="integer" required>
+  Primary key of the `AlumniProfile` who is the featured speaker.
+</ParamField>
+
+<ParamField body="date" type="string (date)" required>
+  Date of the session in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="time" type="string (time)" required>
+  Start time of the session in `HH:MM:SS` format.
+</ParamField>
+
+<ParamField body="venue" type="string" required>
+  Location where the session will be held (max 200 characters).
+</ParamField>
+
+<ParamField body="max_attendees" type="integer">
+  Maximum number of attendees allowed. Defaults to `100`.
+</ParamField>
+
+<ParamField body="registration_deadline" type="string (date)" required>
+  Last date in `YYYY-MM-DD` format by which students must register to attend.
+</ParamField>
+
+#### Example — Create a career talk session
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/communication/career-talk-sessions/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "From Gobarau to Silicon Valley: A Journey in Software Engineering",
+    "description": "Engr. Hafsat Musa, Class of 2015, shares her path from Gobarau Academy to leading a team at a top technology firm. Topics include tertiary education choices, coding bootcamps, and career growth.",
+    "alumni": 3,
+    "date": "2025-03-12",
+    "time": "10:00:00",
+    "venue": "School Main Hall",
+    "max_attendees": 200,
+    "registration_deadline": "2025-03-10"
+  }'
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the session.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Session title.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Full description of the session.
+</ResponseField>
+
+<ResponseField name="alumni" type="integer">
+  Primary key of the featured `AlumniProfile`.
+</ResponseField>
+
+<ResponseField name="date" type="string (date)">
+  Date of the session.
+</ResponseField>
+
+<ResponseField name="time" type="string (time)">
+  Start time of the session.
+</ResponseField>
+
+<ResponseField name="venue" type="string">
+  Venue name or location.
+</ResponseField>
+
+<ResponseField name="max_attendees" type="integer">
+  Maximum allowed attendees.
+</ResponseField>
+
+<ResponseField name="registration_deadline" type="string (date)">
+  Registration cut-off date.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Last modification timestamp.
+</ResponseField>

@@ -1,0 +1,862 @@
+---
+title: "Academics API — Classes, Subjects, Scores, and Tahfeez Tracking"
+sidebarTitle: "Academics"
+description: "REST endpoints for all academic operations: class structure, subject assignments, timetables, student scores, report cards, attendance, exam management, and Qur'an Tahfeez progress."
+---
+
+The Academics module is the academic backbone of the Gobarau Academy platform. It covers the complete lifecycle of learning — from creating class instances and assigning teachers to subjects, through scheduling timetables and recording daily attendance, all the way to scoring assessments, generating termly report cards, and managing exam registrations. Uniquely, the module also includes a dedicated **Tahfeez** sub-system for tracking each student's Qur'an memorization progress juz by juz, with recitation session records supervised by a teacher. All endpoints are prefixed with `/api/academics/` and follow standard DRF router conventions, exposing `GET` (list), `POST` (create), `GET /{id}/` (retrieve), `PUT`/`PATCH` (update), and `DELETE` (destroy) on every resource.
+
+---
+
+## Class Structure
+
+### Classes
+
+<ParamField path="GET /api/academics/classes/" type="endpoint">
+  List all class instances.
+</ParamField>
+
+<ParamField path="POST /api/academics/classes/" type="endpoint">
+  Create a new class instance (e.g., *JSS 1A — 2024/2025 Session*).
+</ParamField>
+
+A **Class** represents a concrete class group for a specific academic session. It links to a `ClassLevel`, an optional `Wing` (Regular, Islamiyyah, or Tahfeez), an optional `Campus`, and an `AcademicSession`.
+
+#### Request Fields
+
+<ParamField body="name" type="string" required>
+  Human-readable class name, e.g. `"JSS 1A"`.
+</ParamField>
+
+<ParamField body="class_level" type="integer" required>
+  Foreign key — ID of the `ClassLevel` record (from the Administration module).
+</ParamField>
+
+<ParamField body="wing" type="integer">
+  Foreign key — ID of the `Wing`. Nullable. Values correspond to `regular`, `islamiyyah`, or `tahfeez`.
+</ParamField>
+
+<ParamField body="campus" type="integer">
+  Foreign key — ID of the `Campus`. Nullable.
+</ParamField>
+
+<ParamField body="session" type="integer" required>
+  Foreign key — ID of the `AcademicSession`.
+</ParamField>
+
+<ParamField body="capacity" type="integer">
+  Maximum number of students. Defaults to `40`.
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Whether the class is currently active. Defaults to `true`.
+</ParamField>
+
+---
+
+### Subjects
+
+<ParamField path="GET /api/academics/subjects/" type="endpoint">
+  List all subjects offered at the school.
+</ParamField>
+
+<ParamField path="POST /api/academics/subjects/" type="endpoint">
+  Create a new subject.
+</ParamField>
+
+A **Subject** is an academic discipline taught at the school. Subject codes must be unique across the system.
+
+#### Request Fields
+
+<ParamField body="name" type="string" required>
+  Full subject name, e.g. `"Mathematics"`.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  Short unique code, e.g. `"MTH101"`. Must be unique.
+</ParamField>
+
+<ParamField body="department" type="integer">
+  Foreign key — ID of the `Department`. Nullable.
+</ParamField>
+
+<ParamField body="subject_type" type="string">
+  Classification of the subject. One of:
+
+  | Value | Label |
+  |---|---|
+  | `core` | Core (default) |
+  | `elective` | Elective |
+  | `vocational` | Vocational |
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional long-form description of the subject. Defaults to empty string.
+</ParamField>
+
+---
+
+### Teacher Class Subjects
+
+<ParamField path="GET /api/academics/teacher-class-subjects/" type="endpoint">
+  List all teacher-to-class-subject assignments.
+</ParamField>
+
+<ParamField path="POST /api/academics/teacher-class-subjects/" type="endpoint">
+  Assign a teacher to teach a subject in a class for an academic year.
+</ParamField>
+
+A **TeacherClassSubject** maps a `TeacherProfile` to a `Class` and `Subject` combination. The combination of `(teacher, class_assigned, subject, academic_year)` is unique, preventing duplicate assignments.
+
+#### Request Fields
+
+<ParamField body="teacher" type="integer" required>
+  Foreign key — ID of the `TeacherProfile`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class` the teacher is assigned to.
+</ParamField>
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject` being taught.
+</ParamField>
+
+<ParamField body="is_form_teacher" type="boolean">
+  Whether this teacher is the form teacher for the class. Defaults to `false`.
+</ParamField>
+
+<ParamField body="academic_year" type="string" required>
+  The academic year string, e.g. `"2024/2025"`.
+</ParamField>
+
+---
+
+### CA Configurations
+
+<ParamField path="GET /api/academics/ca-configurations/" type="endpoint">
+  List all Continuous Assessment configurations.
+</ParamField>
+
+<ParamField path="POST /api/academics/ca-configurations/" type="endpoint">
+  Create a CA configuration for a subject, class level, and term combination.
+</ParamField>
+
+A **CAConfiguration** defines the weighting split between continuous assessment (CA) and exam scores for a given `Subject` + `ClassLevel` + `Term` combination. The combination of these three fields is unique.
+
+#### Request Fields
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject`.
+</ParamField>
+
+<ParamField body="class_level" type="integer" required>
+  Foreign key — ID of the `ClassLevel`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term`.
+</ParamField>
+
+<ParamField body="ca_weight" type="number" required>
+  Weight (percentage) allocated to continuous assessment scores, e.g. `40.00`.
+</ParamField>
+
+<ParamField body="exam_weight" type="number" required>
+  Weight (percentage) allocated to the exam score, e.g. `60.00`.
+</ParamField>
+
+<ParamField body="total_weight" type="number">
+  Total combined weight. Defaults to `100.00`.
+</ParamField>
+
+---
+
+## Timetables
+
+### Timetables
+
+<ParamField path="GET /api/academics/timetables/" type="endpoint">
+  List all weekly timetable entries.
+</ParamField>
+
+<ParamField path="POST /api/academics/timetables/" type="endpoint">
+  Create a new weekly timetable slot for a class.
+</ParamField>
+
+A **Timetable** entry defines a single weekly lesson slot — which class, which subject, which teacher, on which day, and at what time.
+
+#### Request Fields
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject`.
+</ParamField>
+
+<ParamField body="teacher" type="integer">
+  Foreign key — ID of the `TeacherProfile`. Nullable.
+</ParamField>
+
+<ParamField body="day" type="string" required>
+  Day of the week. One of: `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday`.
+</ParamField>
+
+<ParamField body="start_time" type="string" required>
+  Lesson start time in `HH:MM:SS` format, e.g. `"08:00:00"`.
+</ParamField>
+
+<ParamField body="end_time" type="string" required>
+  Lesson end time in `HH:MM:SS` format, e.g. `"09:00:00"`.
+</ParamField>
+
+<ParamField body="room" type="string">
+  Optional room or venue label, e.g. `"Room 12"`.
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Whether this slot is currently active. Defaults to `true`.
+</ParamField>
+
+---
+
+### Exam Timetables
+
+<ParamField path="GET /api/academics/exam-timetables/" type="endpoint">
+  List all exam timetable entries.
+</ParamField>
+
+<ParamField path="POST /api/academics/exam-timetables/" type="endpoint">
+  Schedule an exam for a class and subject.
+</ParamField>
+
+An **ExamTimetable** entry represents a scheduled examination event, linking a `Class`, `Subject`, and `Term` to a specific date, time range, and venue.
+
+#### Request Fields
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term`.
+</ParamField>
+
+<ParamField body="exam_date" type="string" required>
+  Date of the exam in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="start_time" type="string" required>
+  Exam start time in `HH:MM:SS` format.
+</ParamField>
+
+<ParamField body="end_time" type="string" required>
+  Exam end time in `HH:MM:SS` format.
+</ParamField>
+
+<ParamField body="venue" type="string">
+  Optional exam venue label, e.g. `"Main Hall"`.
+</ParamField>
+
+---
+
+## Assessment
+
+### Scores
+
+<ParamField path="GET /api/academics/scores/" type="endpoint">
+  List all student subject scores.
+</ParamField>
+
+<ParamField path="POST /api/academics/scores/" type="endpoint">
+  Record a student's CA and exam scores for a subject in a term.
+</ParamField>
+
+A **Score** captures a student's continuous assessment score, exam score, computed total, grade, and grade point for a specific subject and term. The unique constraint on `(student, subject, term)` ensures one record per student per subject per term.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="ca_score" type="number">
+  Continuous assessment score. Defaults to `0`.
+</ParamField>
+
+<ParamField body="exam_score" type="number">
+  Examination score. Defaults to `0`.
+</ParamField>
+
+<ParamField body="total_score" type="number">
+  Computed total score. Defaults to `0`.
+</ParamField>
+
+<ParamField body="grade" type="string">
+  Grade string, e.g. `"A"`. Populated automatically or manually.
+</ParamField>
+
+<ParamField body="grade_point" type="number">
+  Grade point value on a GPA scale. Nullable.
+</ParamField>
+
+<ParamField body="is_locked" type="boolean">
+  When `true`, the score record is locked and cannot be edited. Defaults to `false`.
+</ParamField>
+
+#### Example — Record a Score
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/academics/scores/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 42,
+    "subject": 7,
+    "term": 3,
+    "class_assigned": 11,
+    "ca_score": "35.50",
+    "exam_score": "58.00",
+    "total_score": "93.50",
+    "grade": "A"
+  }'
+```
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the created score record.
+</ResponseField>
+
+<ResponseField name="student" type="integer">
+  ID of the `StudentProfile`.
+</ResponseField>
+
+<ResponseField name="subject" type="integer">
+  ID of the `Subject`.
+</ResponseField>
+
+<ResponseField name="total_score" type="string">
+  Computed total score as a decimal string.
+</ResponseField>
+
+<ResponseField name="grade" type="string">
+  Grade awarded based on total score.
+</ResponseField>
+
+<ResponseField name="is_locked" type="boolean">
+  Lock state of the score record.
+</ResponseField>
+
+---
+
+### Report Cards
+
+<ParamField path="GET /api/academics/report-cards/" type="endpoint">
+  List all report cards.
+</ParamField>
+
+<ParamField path="POST /api/academics/report-cards/" type="endpoint">
+  Generate or create a report card for a student in a term.
+</ParamField>
+
+A **ReportCard** aggregates a student's performance across all subjects in a term, computing a total score, average, and class position. The unique constraint on `(student, term, class_assigned)` ensures one report card per student per term.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="total_score" type="number">
+  Aggregate total score across all subjects. Defaults to `0`.
+</ParamField>
+
+<ParamField body="average" type="number">
+  Term average score. Defaults to `0`.
+</ParamField>
+
+<ParamField body="position" type="integer">
+  Class position ranking. Nullable.
+</ParamField>
+
+<ParamField body="is_published" type="boolean">
+  Whether the report card is published and visible to students/parents. Defaults to `false`.
+</ParamField>
+
+---
+
+### Assignments
+
+<ParamField path="GET /api/academics/assignments/" type="endpoint">
+  List all assignments.
+</ParamField>
+
+<ParamField path="POST /api/academics/assignments/" type="endpoint">
+  Create a new assignment for a class and subject.
+</ParamField>
+
+An **Assignment** is a task issued to a class for a specific subject, with a due date and maximum score.
+
+#### Request Fields
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  Assignment title, e.g. `"Chapter 4 Review Questions"`.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Detailed assignment instructions. Optional.
+</ParamField>
+
+<ParamField body="due_date" type="string" required>
+  Submission deadline in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="max_score" type="number">
+  Maximum achievable score. Defaults to `100`.
+</ParamField>
+
+<ParamField body="is_published" type="boolean">
+  Whether the assignment is visible to students. Defaults to `false`.
+</ParamField>
+
+---
+
+### Assignment Submissions
+
+<ParamField path="GET /api/academics/assignment-submissions/" type="endpoint">
+  List all assignment submissions.
+</ParamField>
+
+<ParamField path="POST /api/academics/assignment-submissions/" type="endpoint">
+  Record a student's submission for an assignment.
+</ParamField>
+
+An **AssignmentSubmission** tracks a student's response to a specific assignment, including the submission date, score awarded, teacher feedback, and late/graded flags. The combination of `(assignment, student)` is unique.
+
+#### Request Fields
+
+<ParamField body="assignment" type="integer" required>
+  Foreign key — ID of the `Assignment`.
+</ParamField>
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="submission_date" type="string" required>
+  Date submitted in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="score" type="number">
+  Score awarded for the submission. Nullable until graded.
+</ParamField>
+
+<ParamField body="feedback" type="string">
+  Teacher feedback on the submission. Optional.
+</ParamField>
+
+<ParamField body="is_late" type="boolean">
+  Whether the submission was past the due date. Defaults to `false`.
+</ParamField>
+
+<ParamField body="is_graded" type="boolean">
+  Whether the submission has been graded. Defaults to `false`.
+</ParamField>
+
+---
+
+## Attendance
+
+### Attendance Records
+
+<ParamField path="GET /api/academics/attendance-records/" type="endpoint">
+  List all daily attendance records.
+</ParamField>
+
+<ParamField path="POST /api/academics/attendance-records/" type="endpoint">
+  Mark attendance for a student on a given date.
+</ParamField>
+
+An **AttendanceRecord** logs a student's presence status for a single school day. The unique constraint on `(student, date, class_assigned)` prevents duplicate entries for the same student on the same date.
+
+#### Attendance Status Values
+
+| Value | Description |
+|---|---|
+| `present` | Student was present (default) |
+| `absent` | Student was absent |
+| `late` | Student arrived late |
+| `excused` | Student was absent with an approved excuse |
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class` the student belongs to.
+</ParamField>
+
+<ParamField body="date" type="string" required>
+  Attendance date in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="status" type="string">
+  One of `present`, `absent`, `late`, or `excused`. Defaults to `present`.
+</ParamField>
+
+<ParamField body="remarks" type="string">
+  Optional notes about the attendance, e.g. reason for absence.
+</ParamField>
+
+<ParamField body="marked_by" type="integer">
+  Foreign key — ID of the `TeacherProfile` who marked attendance. Nullable.
+</ParamField>
+
+#### Example — Mark Attendance
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/academics/attendance-records/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 42,
+    "class_assigned": 11,
+    "date": "2025-01-20",
+    "status": "present",
+    "marked_by": 5
+  }'
+```
+
+#### Example — List Attendance for a Student
+
+```bash
+curl -X GET "https://api.gobarau.edu.ng/api/academics/attendance-records/?student=42" \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+### Attendance Summaries
+
+<ParamField path="GET /api/academics/attendance-summaries/" type="endpoint">
+  List all termly attendance summaries.
+</ParamField>
+
+<ParamField path="POST /api/academics/attendance-summaries/" type="endpoint">
+  Create or update a termly attendance summary for a student.
+</ParamField>
+
+An **AttendanceSummary** aggregates a student's attendance counts over an entire term, computing a final attendance percentage. The unique constraint on `(student, term, class_assigned)` ensures one summary per student per term.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="total_present" type="integer">
+  Total days the student was present. Defaults to `0`.
+</ParamField>
+
+<ParamField body="total_absent" type="integer">
+  Total days the student was absent. Defaults to `0`.
+</ParamField>
+
+<ParamField body="total_late" type="integer">
+  Total days the student arrived late. Defaults to `0`.
+</ParamField>
+
+<ParamField body="total_excused" type="integer">
+  Total excused absences. Defaults to `0`.
+</ParamField>
+
+<ParamField body="attendance_percentage" type="number">
+  Computed attendance percentage as a decimal, e.g. `"92.50"`. Defaults to `0`.
+</ParamField>
+
+---
+
+## Exams
+
+### Exam Registrations
+
+<ParamField path="GET /api/academics/exam-registrations/" type="endpoint">
+  List all exam registrations.
+</ParamField>
+
+<ParamField path="POST /api/academics/exam-registrations/" type="endpoint">
+  Register a student to sit an exam for a subject in a term.
+</ParamField>
+
+An **ExamRegistration** records a student's eligibility to sit the exam for a particular subject in a given term. The unique constraint on `(student, subject, term)` prevents duplicate registrations.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="is_registered" type="boolean">
+  Whether the student is actively registered. Defaults to `true`.
+</ParamField>
+
+---
+
+### Exam Results
+
+<ParamField path="GET /api/academics/exam-results/" type="endpoint">
+  List all exam results.
+</ParamField>
+
+<ParamField path="POST /api/academics/exam-results/" type="endpoint">
+  Record an exam result for a student in a subject.
+</ParamField>
+
+An **ExamResult** stores the final examination outcome — score, grade, and remark — for a student's subject in a term. The unique constraint on `(student, subject, term)` ensures one result per student per subject per term.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="subject" type="integer" required>
+  Foreign key — ID of the `Subject`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term`.
+</ParamField>
+
+<ParamField body="class_assigned" type="integer" required>
+  Foreign key — ID of the `Class`.
+</ParamField>
+
+<ParamField body="score" type="number" required>
+  Exam score as a decimal, e.g. `"72.50"`.
+</ParamField>
+
+<ParamField body="grade" type="string">
+  Grade letter derived from the score, e.g. `"B"`.
+</ParamField>
+
+<ParamField body="remark" type="string">
+  Short remark on performance, e.g. `"Good"`.
+</ParamField>
+
+---
+
+## Tahfeez (Qur'an Memorization)
+
+<Note>
+  The **Tahfeez wing** is a specialist academic division of Gobarau Academy dedicated to Qur'an memorization. Students in this wing have a dedicated tracking system comprising **JuzProgress** — one record per student per Juz — and **RecitationSession** records that log live sessions between a student and their Tahfeez teacher. These two endpoints are exclusive to the Tahfeez workflow and have no equivalent in the regular or Islamiyyah wings.
+</Note>
+
+### Juz Progresses
+
+<ParamField path="GET /api/academics/juz-progresses/" type="endpoint">
+  List all Juz memorization progress records.
+</ParamField>
+
+<ParamField path="POST /api/academics/juz-progresses/" type="endpoint">
+  Create a Juz progress record for a student.
+</ParamField>
+
+A **JuzProgress** record tracks a student's memorization status for a single Juz of the Qur'an, specifying the start and end Surah and Ayat, the current status, and optional start/completion dates. The unique constraint on `(student, juz_number)` ensures only one progress record per Juz per student.
+
+#### Juz Status Values
+
+| Value | Description |
+|---|---|
+| `not_started` | Memorization has not begun (default) |
+| `in_progress` | Student is actively memorizing this Juz |
+| `memorized` | Student has completed memorizing this Juz |
+| `reviewed` | Student has revised and consolidated this Juz |
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="juz_number" type="integer" required>
+  The Juz number (1–30).
+</ParamField>
+
+<ParamField body="surah_start" type="string" required>
+  Name of the starting Surah in this Juz, e.g. `"Al-Baqarah"`.
+</ParamField>
+
+<ParamField body="surah_end" type="string" required>
+  Name of the ending Surah in this Juz, e.g. `"Al-Baqarah"`.
+</ParamField>
+
+<ParamField body="ayat_start" type="integer" required>
+  Ayat number where this Juz begins.
+</ParamField>
+
+<ParamField body="ayat_end" type="integer" required>
+  Ayat number where this Juz ends.
+</ParamField>
+
+<ParamField body="status" type="string">
+  Current memorization status. One of `not_started`, `in_progress`, `memorized`, `reviewed`. Defaults to `not_started`.
+</ParamField>
+
+<ParamField body="started_date" type="string">
+  Date the student began memorizing this Juz, in `YYYY-MM-DD` format. Nullable.
+</ParamField>
+
+<ParamField body="completed_date" type="string">
+  Date the student completed memorization of this Juz, in `YYYY-MM-DD` format. Nullable.
+</ParamField>
+
+#### Example — Create a Juz Progress Record
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/academics/juz-progresses/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 88,
+    "juz_number": 1,
+    "surah_start": "Al-Fatihah",
+    "surah_end": "Al-Baqarah",
+    "ayat_start": 1,
+    "ayat_end": 141,
+    "status": "in_progress",
+    "started_date": "2025-01-15"
+  }'
+```
+
+#### Example — Mark a Juz as Memorized
+
+```bash
+curl -X PATCH https://api.gobarau.edu.ng/api/academics/juz-progresses/12/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "memorized",
+    "completed_date": "2025-03-10"
+  }'
+```
+
+---
+
+### Recitation Sessions
+
+<ParamField path="GET /api/academics/recitation-sessions/" type="endpoint">
+  List all recitation session records.
+</ParamField>
+
+<ParamField path="POST /api/academics/recitation-sessions/" type="endpoint">
+  Log a recitation session between a student and a Tahfeez teacher.
+</ParamField>
+
+A **RecitationSession** records the outcome of a one-to-one recitation sitting, capturing which Juz and Surah were covered, a quality rating on a 1–5 scale, and any remarks from the teacher.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="teacher" type="integer">
+  Foreign key — ID of the `TeacherProfile` supervising the session. Nullable.
+</ParamField>
+
+<ParamField body="date" type="string" required>
+  Date of the recitation session in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="juz_covered" type="string" required>
+  Description of the Juz covered in this session, e.g. `"Juz 2"`.
+</ParamField>
+
+<ParamField body="surah_covered" type="string" required>
+  Surah(s) recited in this session, e.g. `"Al-Baqarah 142–252"`.
+</ParamField>
+
+<ParamField body="quality_rating" type="integer">
+  Teacher's rating of recitation quality on a scale of **1 (poor) to 5 (excellent)**. Defaults to `5`.
+</ParamField>
+
+<ParamField body="remarks" type="string">
+  Optional teacher notes on pronunciation, fluency, or areas needing improvement.
+</ParamField>
+
+#### Example — Log a Recitation Session
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/academics/recitation-sessions/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 88,
+    "teacher": 5,
+    "date": "2025-03-12",
+    "juz_covered": "Juz 1",
+    "surah_covered": "Al-Fatihah and Al-Baqarah 1-20",
+    "quality_rating": 4,
+    "remarks": "Good tajweed, needs to work on madd rules"
+  }'
+```
+
+<Tip>
+  Query recitation sessions by student to see a full history of their Tahfeez progress over time: `GET /api/academics/recitation-sessions/?student=88`
+</Tip>

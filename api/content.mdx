@@ -1,0 +1,782 @@
+---
+title: "Content API — News, Events, Gallery, Magazine, and Yearbook"
+sidebarTitle: "Content"
+description: "REST endpoints for Gobarau Academy's public-facing content: school news, events calendar, photo gallery albums, magazine issues, annual yearbook, and testimonials."
+---
+
+The Content module powers the public-facing side of Gobarau Academy's platform — everything a prospective family, current student, or returning alumnus might browse on the school website. It provides structured endpoints for publishing school news articles, listing upcoming events, organising photo galleries, distributing magazine issues and their articles, commemorating graduating classes through the yearbook, and showcasing testimonials from parents and alumni. All `GET` and `retrieve` actions on every content endpoint are fully public (no authentication required), while `POST`, `PUT`, `PATCH`, and `DELETE` operations require an authenticated staff or admin user. Image and file uploads are handled via Cloudinary through Django's `cloudinary_storage` backend.
+
+<Note>
+  All image and file fields (`featured_image`, `cover_image`, `image`, `photo`, `pdf_url`, etc.) are stored on **Cloudinary** via `django-cloudinary-storage`. Send these as `multipart/form-data` requests when uploading files, and expect a Cloudinary CDN URL back in the response.
+</Note>
+
+---
+
+## News Categories
+
+News categories provide organisational taxonomy for news posts. The `slug` field is automatically generated from the category `name` on first save — you do not need to supply it.
+
+### List & Create News Categories
+
+**Endpoint:** `GET/POST /api/content/news-categories/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="name" type="string" required>
+  Unique category name (max 100 characters). Must be unique across all categories.
+</ParamField>
+
+<ParamField body="slug" type="string">
+  URL-friendly slug (max 120 characters). Auto-generated from `name` if omitted.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional longer description of the category. Defaults to empty string.
+</ParamField>
+
+#### Example — Create a news category
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/news-categories/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Academic Excellence",
+    "description": "News celebrating student and staff academic achievements."
+  }'
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the category.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Category name.
+</ResponseField>
+
+<ResponseField name="slug" type="string">
+  Auto-generated URL slug derived from the name.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Category description.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp.
+</ResponseField>
+
+---
+
+## News Posts
+
+News posts are the primary editorial content published on the school website. Posts can be drafted before publishing and optionally featured to highlight them on the homepage.
+
+<Note>
+  Only posts with `is_published: true` should be surfaced on the public-facing website. Always check this flag when querying posts for display. The `slug` field is auto-generated from the `title` on first save; supply it explicitly if you need a custom URL-friendly identifier.
+</Note>
+
+### List & Create News Posts
+
+**Endpoint:** `GET/POST /api/content/news-posts/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="title" type="string" required>
+  Article headline (max 200 characters).
+</ParamField>
+
+<ParamField body="slug" type="string">
+  URL slug (max 220 characters). Auto-generated from `title` if left blank. Must be unique.
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  Full article body text (HTML or plain text).
+</ParamField>
+
+<ParamField body="category" type="integer">
+  Primary key of the `NewsCategory`. Set to `null` for uncategorised posts.
+</ParamField>
+
+<ParamField body="featured_image" type="file">
+  Optional hero image for the article. Upload as `multipart/form-data`; stored on Cloudinary.
+</ParamField>
+
+<ParamField body="published_at" type="string (datetime)">
+  ISO 8601 datetime for the post's publication date. Can be a future date to schedule a post.
+</ParamField>
+
+<ParamField body="is_featured" type="boolean">
+  When `true`, the post is highlighted in featured/homepage sections. Defaults to `false`.
+</ParamField>
+
+<ParamField body="is_published" type="boolean">
+  Whether the post is live and publicly visible. Defaults to `false`. Set to `true` to publish.
+</ParamField>
+
+#### Example — Create and immediately publish a news post
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/news-posts/ \
+  -H "Authorization: Bearer <token>" \
+  -F "title=Gobarau Students Sweep State Mathematics Olympiad" \
+  -F "body=<p>Students from Gobarau Academy claimed first, second, and third place at the 2025 Katsina State Mathematics Olympiad held on Friday 17th January...</p>" \
+  -F "category=3" \
+  -F "published_at=2025-01-18T09:00:00Z" \
+  -F "is_featured=true" \
+  -F "is_published=true" \
+  -F "featured_image=@/path/to/olympiad-winners.jpg"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the post.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Article headline.
+</ResponseField>
+
+<ResponseField name="slug" type="string">
+  Auto-generated or custom URL slug.
+</ResponseField>
+
+<ResponseField name="body" type="string">
+  Full article body.
+</ResponseField>
+
+<ResponseField name="category" type="integer | null">
+  Foreign key to the `NewsCategory`, or `null`.
+</ResponseField>
+
+<ResponseField name="featured_image" type="string | null">
+  Cloudinary CDN URL of the uploaded image, or `null`.
+</ResponseField>
+
+<ResponseField name="published_at" type="string (datetime) | null">
+  Publication datetime.
+</ResponseField>
+
+<ResponseField name="is_featured" type="boolean">
+  Whether the post is featured.
+</ResponseField>
+
+<ResponseField name="is_published" type="boolean">
+  Whether the post is publicly visible.
+</ResponseField>
+
+---
+
+## Events
+
+The Events endpoint surfaces upcoming and past school events on the public calendar. Each event can have a cover image and be flagged as public or internal-only.
+
+### List & Create Events
+
+**Endpoint:** `GET/POST /api/content/events/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="title" type="string" required>
+  Event title (max 200 characters).
+</ParamField>
+
+<ParamField body="description" type="string">
+  Full description of the event. Defaults to empty string.
+</ParamField>
+
+<ParamField body="event_date" type="string (date)" required>
+  Date of the event in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="venue" type="string">
+  Event venue or location (max 200 characters). Defaults to empty string.
+</ParamField>
+
+<ParamField body="cover_image" type="file">
+  Optional cover image. Upload as `multipart/form-data`; stored on Cloudinary.
+</ParamField>
+
+<ParamField body="is_public" type="boolean">
+  When `true` (default), the event appears on the public calendar. Set `false` for internal events.
+</ParamField>
+
+#### Example — Create an event
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/events/ \
+  -H "Authorization: Bearer <token>" \
+  -F "title=Annual Inter-House Sports Competition" \
+  -F "description=The yearly inter-house athletics and field competition open to all students." \
+  -F "event_date=2025-02-28" \
+  -F "venue=School Sports Field" \
+  -F "is_public=true" \
+  -F "cover_image=@/path/to/sports-day.jpg"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the event.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Event title.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Event description.
+</ResponseField>
+
+<ResponseField name="event_date" type="string (date)">
+  Date of the event.
+</ResponseField>
+
+<ResponseField name="venue" type="string">
+  Event venue.
+</ResponseField>
+
+<ResponseField name="cover_image" type="string | null">
+  Cloudinary CDN URL of the cover image, or `null`.
+</ResponseField>
+
+<ResponseField name="is_public" type="boolean">
+  Whether the event is publicly visible.
+</ResponseField>
+
+---
+
+## Gallery Albums
+
+Gallery albums are named containers grouping related photos together. An album can be linked to an `Event` to automatically associate the photos with that occasion.
+
+<Tip>
+  Link `GalleryAlbum` records to `Event` instances whenever photos are from a specific school event. This lets the frontend surface photo galleries directly within each event's detail page, giving parents and students a richer, organised browsing experience.
+</Tip>
+
+### List & Create Gallery Albums
+
+**Endpoint:** `GET/POST /api/content/gallery-albums/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="title" type="string" required>
+  Album title (max 200 characters).
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description of the album's contents. Defaults to empty string.
+</ParamField>
+
+<ParamField body="cover_image" type="file">
+  Thumbnail/cover image for the album. Upload as `multipart/form-data`; stored on Cloudinary.
+</ParamField>
+
+<ParamField body="event" type="integer">
+  Optional foreign key to an `Event`. Links the album to a specific school event. Pass `null` for standalone albums.
+</ParamField>
+
+#### Example — Create a gallery album for an event
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/gallery-albums/ \
+  -H "Authorization: Bearer <token>" \
+  -F "title=Inter-House Sports 2025 — Photos" \
+  -F "description=Official photo coverage of the 2025 annual inter-house sports competition." \
+  -F "event=17" \
+  -F "cover_image=@/path/to/album-cover.jpg"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the album.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Album title.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Album description.
+</ResponseField>
+
+<ResponseField name="cover_image" type="string | null">
+  Cloudinary CDN URL of the cover image, or `null`.
+</ResponseField>
+
+<ResponseField name="event" type="integer | null">
+  Primary key of the linked `Event`, or `null`.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp.
+</ResponseField>
+
+---
+
+## Gallery Images
+
+Individual photos belong to a `GalleryAlbum`. Each image has an optional caption, an ordering index for display sequence, and a reference to the staff member who uploaded it.
+
+### List & Create Gallery Images
+
+**Endpoint:** `GET/POST /api/content/gallery-images/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="album" type="integer" required>
+  Primary key of the parent `GalleryAlbum`.
+</ParamField>
+
+<ParamField body="image" type="file" required>
+  The photo to upload. Send as `multipart/form-data`; stored on Cloudinary under `content/gallery/images/`.
+</ParamField>
+
+<ParamField body="caption" type="string">
+  Optional descriptive caption for the image (max 200 characters). Defaults to empty string.
+</ParamField>
+
+<ParamField body="order_index" type="integer">
+  Display order within the album. Lower values appear first. Defaults to `0`.
+</ParamField>
+
+<ParamField body="uploaded_by" type="integer">
+  Primary key of the `User` uploading the image. Can be left null if the uploader is not tracked.
+</ParamField>
+
+#### Example — Upload a gallery image
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/gallery-images/ \
+  -H "Authorization: Bearer <token>" \
+  -F "album=22" \
+  -F "caption=JSS3 students competing in the 100m sprint." \
+  -F "order_index=1" \
+  -F "uploaded_by=15" \
+  -F "image=@/path/to/sprint-race.jpg"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the gallery image.
+</ResponseField>
+
+<ResponseField name="album" type="integer">
+  Primary key of the parent album.
+</ResponseField>
+
+<ResponseField name="image" type="string">
+  Cloudinary CDN URL of the uploaded photo.
+</ResponseField>
+
+<ResponseField name="caption" type="string">
+  Image caption.
+</ResponseField>
+
+<ResponseField name="order_index" type="integer">
+  Display order within the album.
+</ResponseField>
+
+<ResponseField name="uploaded_by" type="integer | null">
+  Primary key of the uploader `User`, or `null`.
+</ResponseField>
+
+---
+
+## Magazine Issues
+
+Magazine issues represent individual editions of the school's publication. Each issue has a unique number and volume identifier, a publication date, an optional cover image, and an optional PDF file hosted on Cloudinary.
+
+### List & Create Magazine Issues
+
+**Endpoint:** `GET/POST /api/content/magazine-issues/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="title" type="string" required>
+  Issue title (max 200 characters).
+</ParamField>
+
+<ParamField body="issue_number" type="string" required>
+  Issue number identifier (max 20 characters), e.g. `"12"` or `"Q3"`.
+</ParamField>
+
+<ParamField body="volume" type="string" required>
+  Volume identifier (max 20 characters), e.g. `"5"` or `"V"`.
+</ParamField>
+
+<ParamField body="publication_date" type="string (date)" required>
+  Publication date in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="cover_image" type="file">
+  Magazine cover image. Upload as `multipart/form-data`; stored on Cloudinary.
+</ParamField>
+
+<ParamField body="pdf_url" type="file">
+  Full PDF of the magazine issue. Upload as `multipart/form-data`; stored on Cloudinary under `content/magazines/pdfs/`.
+</ParamField>
+
+#### Example — Create a magazine issue
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/magazine-issues/ \
+  -H "Authorization: Bearer <token>" \
+  -F "title=The Gobarau Herald — First Term 2024/2025" \
+  -F "issue_number=18" \
+  -F "volume=6" \
+  -F "publication_date=2025-01-10" \
+  -F "cover_image=@/path/to/herald-cover.jpg" \
+  -F "pdf_url=@/path/to/herald-issue-18.pdf"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the magazine issue.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Issue title.
+</ResponseField>
+
+<ResponseField name="issue_number" type="string">
+  Issue number.
+</ResponseField>
+
+<ResponseField name="volume" type="string">
+  Volume identifier.
+</ResponseField>
+
+<ResponseField name="publication_date" type="string (date)">
+  Publication date.
+</ResponseField>
+
+<ResponseField name="cover_image" type="string | null">
+  Cloudinary CDN URL of the cover image, or `null`.
+</ResponseField>
+
+<ResponseField name="pdf_url" type="string | null">
+  Cloudinary CDN URL of the PDF file, or `null`.
+</ResponseField>
+
+---
+
+## Magazine Articles
+
+Magazine articles are the individual pieces of writing within a `MagazineIssue`. They carry an author name (which need not be a system user — it can be a student name), article body, and the page number within the printed issue.
+
+### List & Create Magazine Articles
+
+**Endpoint:** `GET/POST /api/content/magazine-articles/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="issue" type="integer" required>
+  Primary key of the parent `MagazineIssue`.
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  Article title (max 200 characters).
+</ParamField>
+
+<ParamField body="author_name" type="string">
+  Name of the article's author (max 200 characters). Can be a student name, staff name, or pen name. Defaults to empty string.
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  Full article body text.
+</ParamField>
+
+<ParamField body="page_number" type="integer">
+  Page number in the printed magazine on which this article starts. Defaults to `0`.
+</ParamField>
+
+#### Example — Create a magazine article
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/magazine-articles/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "issue": 7,
+    "title": "Artificial Intelligence: Friend or Foe for Nigerian Students?",
+    "author_name": "Fatima Abdullahi (SSS3A)",
+    "body": "The rapid advancement of artificial intelligence presents both opportunities and challenges for students across Nigeria...",
+    "page_number": 14
+  }'
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the article.
+</ResponseField>
+
+<ResponseField name="issue" type="integer">
+  Primary key of the parent `MagazineIssue`.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Article title.
+</ResponseField>
+
+<ResponseField name="author_name" type="string">
+  Author's name.
+</ResponseField>
+
+<ResponseField name="body" type="string">
+  Full article body.
+</ResponseField>
+
+<ResponseField name="page_number" type="integer">
+  Starting page number in the printed issue.
+</ResponseField>
+
+---
+
+## Yearbook Sets
+
+A yearbook set groups all student entries for a single academic session under one cover. It is linked to an `AcademicSession` to tie it to the school calendar.
+
+### List & Create Yearbook Sets
+
+**Endpoint:** `GET/POST /api/content/yearbook-sets/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="session" type="integer" required>
+  Primary key of the `AcademicSession` this yearbook commemorates.
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  Title of the yearbook set (max 200 characters), e.g. `"Class of 2025"`.
+</ParamField>
+
+<ParamField body="publication_date" type="string (date)" required>
+  Date the yearbook was published in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="cover_image" type="file">
+  Cover image for the yearbook. Upload as `multipart/form-data`; stored on Cloudinary.
+</ParamField>
+
+#### Example — Create a yearbook set
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/yearbook-sets/ \
+  -H "Authorization: Bearer <token>" \
+  -F "session=12" \
+  -F "title=Class of 2025 — Gobarau Academy" \
+  -F "publication_date=2025-07-15" \
+  -F "cover_image=@/path/to/yearbook-2025-cover.jpg"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the yearbook set.
+</ResponseField>
+
+<ResponseField name="session" type="integer">
+  Primary key of the `AcademicSession`.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Yearbook title.
+</ResponseField>
+
+<ResponseField name="publication_date" type="string (date)">
+  Publication date.
+</ResponseField>
+
+<ResponseField name="cover_image" type="string | null">
+  Cloudinary CDN URL of the cover image, or `null`.
+</ResponseField>
+
+---
+
+## Yearbook Entries
+
+Each `YearbookEntry` represents a single student's profile page within a yearbook set. It stores their portrait photo, nickname, favourite quote, and future aspiration.
+
+### List & Create Yearbook Entries
+
+**Endpoint:** `GET/POST /api/content/yearbook-entries/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="yearbook_set" type="integer" required>
+  Primary key of the parent `YearbookSet`.
+</ParamField>
+
+<ParamField body="student" type="integer" required>
+  Primary key of the `StudentProfile` this entry belongs to.
+</ParamField>
+
+<ParamField body="photo" type="file">
+  Student portrait for the yearbook page. Upload as `multipart/form-data`; stored on Cloudinary under `content/yearbooks/students/`.
+</ParamField>
+
+<ParamField body="nickname" type="string">
+  Student's nickname or alias (max 100 characters). Defaults to empty string.
+</ParamField>
+
+<ParamField body="quote" type="string">
+  Student's favourite quote or personal message. Defaults to empty string.
+</ParamField>
+
+<ParamField body="future_aspiration" type="string">
+  Student's stated future career or life goal. Defaults to empty string.
+</ParamField>
+
+#### Example — Create a yearbook entry
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/yearbook-entries/ \
+  -H "Authorization: Bearer <token>" \
+  -F "yearbook_set=4" \
+  -F "student=213" \
+  -F "nickname=The Architect" \
+  -F "quote=The secret of getting ahead is getting started. — Mark Twain" \
+  -F "future_aspiration=To become a structural engineer and design bridges across Nigeria." \
+  -F "photo=@/path/to/student-portrait.jpg"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the yearbook entry.
+</ResponseField>
+
+<ResponseField name="yearbook_set" type="integer">
+  Primary key of the parent `YearbookSet`.
+</ResponseField>
+
+<ResponseField name="student" type="integer">
+  Primary key of the `StudentProfile`.
+</ResponseField>
+
+<ResponseField name="photo" type="string | null">
+  Cloudinary CDN URL of the student portrait, or `null`.
+</ResponseField>
+
+<ResponseField name="nickname" type="string">
+  Student's nickname.
+</ResponseField>
+
+<ResponseField name="quote" type="string">
+  Student's quote.
+</ResponseField>
+
+<ResponseField name="future_aspiration" type="string">
+  Student's future aspiration.
+</ResponseField>
+
+---
+
+## Testimonials
+
+Testimonials are endorsements and personal accounts from alumni, parents, or community members. They can be marked as featured to surface prominently on the school's homepage or landing page.
+
+### List & Create Testimonials
+
+**Endpoint:** `GET/POST /api/content/testimonials/`
+
+**Permissions:** `GET` — public · `POST/PUT/PATCH/DELETE` — `IsAuthenticated`, `IsStaffOrAdmin`
+
+#### Request Fields (POST)
+
+<ParamField body="person_name" type="string" required>
+  Full name of the person giving the testimonial (max 200 characters).
+</ParamField>
+
+<ParamField body="role" type="string">
+  Person's role or relationship to the school, e.g. `"Parent"`, `"Alumni – Class of 2018"` (max 100 characters). Defaults to empty string.
+</ParamField>
+
+<ParamField body="message" type="string" required>
+  The testimonial text.
+</ParamField>
+
+<ParamField body="photo" type="file">
+  Optional portrait of the testimonial author. Upload as `multipart/form-data`; stored on Cloudinary under `content/testimonials/`.
+</ParamField>
+
+<ParamField body="is_featured" type="boolean">
+  When `true`, the testimonial is shown in featured/homepage carousels. Defaults to `false`.
+</ParamField>
+
+<ParamField body="published_at" type="string (datetime)">
+  ISO 8601 datetime the testimonial is considered published. Can be a future date.
+</ParamField>
+
+#### Example — Create a featured testimonial
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/content/testimonials/ \
+  -H "Authorization: Bearer <token>" \
+  -F "person_name=Alhaji Musa Ibrahim" \
+  -F "role=Parent of Two Gobarau Graduates" \
+  -F "message=Gobarau Academy transformed my children's lives. The dedication of the teachers and the strong moral values instilled here are second to none in Katsina State." \
+  -F "is_featured=true" \
+  -F "published_at=2025-01-01T00:00:00Z" \
+  -F "photo=@/path/to/alhaji-musa.jpg"
+```
+
+#### Response Fields
+
+<ResponseField name="id" type="uuid">
+  Unique identifier for the testimonial.
+</ResponseField>
+
+<ResponseField name="person_name" type="string">
+  Name of the person giving the testimonial.
+</ResponseField>
+
+<ResponseField name="role" type="string">
+  Their role or relationship to the school.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  The testimonial message.
+</ResponseField>
+
+<ResponseField name="photo" type="string | null">
+  Cloudinary CDN URL of the author's portrait, or `null`.
+</ResponseField>
+
+<ResponseField name="is_featured" type="boolean">
+  Whether the testimonial is featured.
+</ResponseField>
+
+<ResponseField name="published_at" type="string (datetime) | null">
+  Publication datetime, or `null` if unscheduled.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Record creation timestamp.
+</ResponseField>

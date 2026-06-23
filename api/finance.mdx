@@ -1,0 +1,577 @@
+---
+title: "Finance API — Fees, Payments, Scholarships, and Marketplace"
+sidebarTitle: "Finance"
+description: "REST endpoints for school finance: fee type definitions, per-class fee structures, student payment records, scholarship funds and recipients, and the school marketplace."
+---
+
+The Finance module is the central hub for all monetary operations at Gobarau Academy. It covers the full lifecycle of school fees — from defining fee categories and mapping them to class levels, to recording individual student payments with full audit trails. Beyond fees, the module manages scholarship funds and their recipients, and operates a school marketplace where students can request items, backed by inventory tracking and restock history. All write endpoints require authentication; scholarship and restock operations are restricted to admin-level users.
+
+---
+
+## Fee Management
+
+### Fee Types
+
+<Note>
+  Fee types are reusable categories (e.g., "Tuition", "ICT Levy", "PTA Fee") that are later assigned amounts via Fee Structures. The `code` field must be globally unique.
+</Note>
+
+#### `GET /api/finance/fee-types/`
+
+Returns a list of all fee type definitions.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the fee type.
+</ResponseField>
+<ResponseField name="name" type="string">
+  Human-readable name of the fee category (e.g., "Tuition Fee").
+</ResponseField>
+<ResponseField name="code" type="string">
+  Short unique code identifier (max 20 characters), e.g., `"TUI"`.
+</ResponseField>
+<ResponseField name="description" type="string">
+  Optional long-form description of the fee type. Defaults to empty string.
+</ResponseField>
+<ResponseField name="is_recurring" type="boolean">
+  Whether this fee is charged on a recurring basis each term or session.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
+
+#### `POST /api/finance/fee-types/`
+
+Creates a new fee type.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="name" type="string" required>
+  Display name for this fee category. Maximum 200 characters.
+</ParamField>
+<ParamField body="code" type="string" required>
+  Short unique code (max 20 characters). Must be unique across all fee types.
+</ParamField>
+<ParamField body="description" type="string">
+  Optional description. Defaults to `""`.
+</ParamField>
+<ParamField body="is_recurring" type="boolean">
+  Set to `true` for fees billed every term/session. Defaults to `false`.
+</ParamField>
+
+---
+
+### Fee Structures
+
+Fee structures bind a fee type to a specific class level and academic session, with a concrete monetary amount and an optional due date.
+
+<Tip>
+  The combination of `fee_type`, `class_level`, and `session` must be unique — you cannot define two fee structures for the same fee type in the same class and session.
+</Tip>
+
+#### `GET /api/finance/fee-structures/`
+
+Returns all fee structures across all class levels and sessions.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier.
+</ResponseField>
+<ResponseField name="fee_type" type="integer (FK)">
+  ID of the related `FeeType`.
+</ResponseField>
+<ResponseField name="class_level" type="integer (FK)">
+  ID of the `ClassLevel` from the administration module.
+</ResponseField>
+<ResponseField name="session" type="integer (FK)">
+  ID of the `AcademicSession` this structure applies to.
+</ResponseField>
+<ResponseField name="amount" type="string (decimal)">
+  Fee amount, up to 10 digits with 2 decimal places (e.g., `"15000.00"`).
+</ResponseField>
+<ResponseField name="due_date" type="string (date) | null">
+  Optional ISO 8601 date by which the fee should be paid. `null` if not set.
+</ResponseField>
+
+#### `POST /api/finance/fee-structures/`
+
+Creates a new fee structure.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="fee_type" type="integer" required>
+  ID of an existing `FeeType`.
+</ParamField>
+<ParamField body="class_level" type="integer" required>
+  ID of the target `ClassLevel`.
+</ParamField>
+<ParamField body="session" type="integer" required>
+  ID of the `AcademicSession` this amount applies to.
+</ParamField>
+<ParamField body="amount" type="string (decimal)" required>
+  Monetary amount charged. e.g., `"25000.00"`.
+</ParamField>
+<ParamField body="due_date" type="string (date)">
+  Optional payment deadline in `YYYY-MM-DD` format.
+</ParamField>
+
+---
+
+### Payments
+
+Payments record individual transactions made by students against a specific fee structure. Every payment must carry a globally unique `receipt_number`.
+
+<Note>
+  The `receipt_number` field has a `unique=True` database constraint. Attempting to create two payments with the same receipt number will return a `400 Bad Request` validation error.
+</Note>
+
+#### `GET /api/finance/payments/`
+
+Returns all payment records ordered by most recent payment date.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the payment record.
+</ResponseField>
+<ResponseField name="student" type="integer (FK)">
+  ID of the `StudentProfile` who made the payment.
+</ResponseField>
+<ResponseField name="fee_structure" type="integer (FK)">
+  ID of the `FeeStructure` this payment is against.
+</ResponseField>
+<ResponseField name="amount" type="string (decimal)">
+  Amount paid in this transaction.
+</ResponseField>
+<ResponseField name="payment_date" type="string (date)">
+  Date the payment was recorded (`YYYY-MM-DD`).
+</ResponseField>
+<ResponseField name="method" type="string (enum)">
+  Payment method. One of: `cash`, `bank_transfer`, `online`.
+</ResponseField>
+<ResponseField name="reference" type="string">
+  Optional external reference number (e.g., bank teller number). Defaults to `""`.
+</ResponseField>
+<ResponseField name="status" type="string (enum)">
+  Payment status. One of: `pending`, `paid`, `partial`, `overdue`, `refunded`.
+</ResponseField>
+<ResponseField name="receipt_number" type="string">
+  Unique receipt identifier (max 50 characters).
+</ResponseField>
+<ResponseField name="created_by" type="integer (FK) | null">
+  ID of the `Person` (staff) who created this record (from `AuditMixin`).
+</ResponseField>
+<ResponseField name="updated_by" type="integer (FK) | null">
+  ID of the `Person` who last modified this record.
+</ResponseField>
+
+#### `POST /api/finance/payments/`
+
+Records a new student payment transaction.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="student" type="integer" required>
+  ID of the `StudentProfile` making the payment.
+</ParamField>
+<ParamField body="fee_structure" type="integer" required>
+  ID of the `FeeStructure` being paid against.
+</ParamField>
+<ParamField body="amount" type="string (decimal)" required>
+  Amount paid in this transaction, e.g., `"5000.00"`.
+</ParamField>
+<ParamField body="payment_date" type="string (date)" required>
+  Date of payment in `YYYY-MM-DD` format.
+</ParamField>
+<ParamField body="method" type="string (enum)" required>
+  Payment method. Must be one of: `cash`, `bank_transfer`, `online`.
+</ParamField>
+<ParamField body="receipt_number" type="string" required>
+  A unique receipt reference. Maximum 50 characters. Must not already exist.
+</ParamField>
+<ParamField body="reference" type="string">
+  Optional external reference (e.g., bank slip number). Defaults to `""`.
+</ParamField>
+<ParamField body="status" type="string (enum)">
+  Payment status. Defaults to `pending`. Options: `pending`, `paid`, `partial`, `overdue`, `refunded`.
+</ParamField>
+
+```bash
+# Create a new payment record
+curl -X POST https://api.gobarauacademy.edu.ng/api/finance/payments/ \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 42,
+    "fee_structure": 7,
+    "amount": "15000.00",
+    "payment_date": "2025-01-20",
+    "method": "bank_transfer",
+    "receipt_number": "RCP-2025-00891",
+    "reference": "TRF/0123456789",
+    "status": "paid"
+  }'
+```
+
+---
+
+## Scholarships
+
+Scholarship management is restricted to **admin-level** users only (`IsAdminLevel`). Staff without admin privileges will receive a `403 Forbidden` response.
+
+### Scholarship Funds
+
+#### `GET /api/finance/scholarship-funds/`
+
+Returns all scholarship funds available for allocation.
+
+**Permissions:** `IsAuthenticated`, `IsAdminLevel`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the scholarship fund.
+</ResponseField>
+<ResponseField name="name" type="string">
+  Name of the scholarship fund (max 200 characters).
+</ResponseField>
+<ResponseField name="description" type="string">
+  Optional description of the fund's purpose.
+</ResponseField>
+<ResponseField name="amount" type="string (decimal)">
+  Total amount available in the fund.
+</ResponseField>
+<ResponseField name="session" type="integer (FK)">
+  ID of the `AcademicSession` this fund is allocated for.
+</ResponseField>
+<ResponseField name="is_active" type="boolean">
+  Whether recipients can currently be assigned from this fund.
+</ResponseField>
+
+#### `POST /api/finance/scholarship-funds/`
+
+Creates a new scholarship fund.
+
+**Permissions:** `IsAuthenticated`, `IsAdminLevel`
+
+<ParamField body="name" type="string" required>
+  Display name for this scholarship fund.
+</ParamField>
+<ParamField body="amount" type="string (decimal)" required>
+  Total monetary value of the fund, e.g., `"500000.00"`.
+</ParamField>
+<ParamField body="session" type="integer" required>
+  ID of the `AcademicSession` this fund belongs to.
+</ParamField>
+<ParamField body="description" type="string">
+  Optional description. Defaults to `""`.
+</ParamField>
+<ParamField body="is_active" type="boolean">
+  Defaults to `true`. Set to `false` to freeze the fund.
+</ParamField>
+
+---
+
+### Scholarship Recipients
+
+<Tip>
+  A student may only be awarded a given scholarship once. The combination of `student` and `scholarship` is unique — duplicate assignments will fail with a `400 Bad Request`.
+</Tip>
+
+#### `GET /api/finance/scholarship-recipients/`
+
+Returns all scholarship recipient records ordered by most recent award date.
+
+**Permissions:** `IsAuthenticated`, `IsAdminLevel`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier.
+</ResponseField>
+<ResponseField name="student" type="integer (FK)">
+  ID of the `StudentProfile` who received the award.
+</ResponseField>
+<ResponseField name="scholarship" type="integer (FK)">
+  ID of the `ScholarshipFund` from which the award was drawn.
+</ResponseField>
+<ResponseField name="amount_awarded" type="string (decimal)">
+  Exact amount awarded to this student.
+</ResponseField>
+<ResponseField name="awarded_date" type="string (date)">
+  ISO 8601 date the scholarship was awarded.
+</ResponseField>
+
+#### `POST /api/finance/scholarship-recipients/`
+
+Awards a scholarship to a student.
+
+**Permissions:** `IsAuthenticated`, `IsAdminLevel`
+
+<ParamField body="student" type="integer" required>
+  ID of the recipient `StudentProfile`.
+</ParamField>
+<ParamField body="scholarship" type="integer" required>
+  ID of the `ScholarshipFund` to draw from.
+</ParamField>
+<ParamField body="amount_awarded" type="string (decimal)" required>
+  Amount to award, e.g., `"50000.00"`.
+</ParamField>
+<ParamField body="awarded_date" type="string (date)" required>
+  Date of award in `YYYY-MM-DD` format.
+</ParamField>
+
+---
+
+## Marketplace
+
+The school marketplace allows students to request items such as uniforms, stationery, and lab materials. Items are organized by category, tracked with inventory levels, and fulfilled through a request workflow.
+
+### Item Categories
+
+#### `GET /api/finance/item-categories/`
+
+Returns all marketplace item categories.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the category.
+</ResponseField>
+<ResponseField name="name" type="string">
+  Category name, max 100 characters (e.g., "Stationery", "Uniform").
+</ResponseField>
+<ResponseField name="description" type="string">
+  Optional description. Defaults to `""`.
+</ResponseField>
+
+#### `POST /api/finance/item-categories/`
+
+Creates a new item category.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="name" type="string" required>
+  Category name. Maximum 100 characters.
+</ParamField>
+<ParamField body="description" type="string">
+  Optional description. Defaults to `""`.
+</ParamField>
+
+---
+
+### Marketplace Items
+
+#### `GET /api/finance/marketplace-items/`
+
+Returns all items listed in the school marketplace.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier.
+</ResponseField>
+<ResponseField name="name" type="string">
+  Item name (max 200 characters).
+</ResponseField>
+<ResponseField name="description" type="string">
+  Optional item description.
+</ResponseField>
+<ResponseField name="category" type="integer (FK) | null">
+  ID of the associated `ItemCategory`. Nullable — the category can be removed without deleting the item (`SET_NULL`).
+</ResponseField>
+<ResponseField name="price" type="string (decimal)">
+  Unit selling price of the item.
+</ResponseField>
+<ResponseField name="stock_quantity" type="integer">
+  Current quantity in stock.
+</ResponseField>
+<ResponseField name="is_available" type="boolean">
+  Whether the item is currently visible and requestable by students.
+</ResponseField>
+
+#### `POST /api/finance/marketplace-items/`
+
+Adds a new item to the marketplace.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="name" type="string" required>
+  Item name. Maximum 200 characters.
+</ParamField>
+<ParamField body="price" type="string (decimal)" required>
+  Unit price, e.g., `"1200.00"`.
+</ParamField>
+<ParamField body="category" type="integer">
+  Optional ID of an `ItemCategory`. Can be `null`.
+</ParamField>
+<ParamField body="description" type="string">
+  Optional item description. Defaults to `""`.
+</ParamField>
+<ParamField body="stock_quantity" type="integer">
+  Initial stock quantity. Defaults to `0`.
+</ParamField>
+<ParamField body="is_available" type="boolean">
+  Set to `false` to hide the item from students. Defaults to `true`.
+</ParamField>
+
+---
+
+### Marketplace Requests
+
+A `MarketplaceRequest` represents a student's order. Individual line items (which item, how many, at what price) are stored separately via `RequestItem`.
+
+#### `GET /api/finance/marketplace-requests/`
+
+Returns all marketplace requests. The response includes a nested `request_items` array via `MarketplaceRequestSerializer`.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the request.
+</ResponseField>
+<ResponseField name="student" type="integer (FK)">
+  ID of the requesting `StudentProfile`.
+</ResponseField>
+<ResponseField name="request_date" type="string (date)">
+  Automatically set to today's date on creation (`auto_now_add=True`).
+</ResponseField>
+<ResponseField name="status" type="string (enum)">
+  Current status. One of: `pending`, `approved`, `fulfilled`, `cancelled`.
+</ResponseField>
+<ResponseField name="request_items" type="array">
+  Nested list of `RequestItem` objects associated with this request (read-only).
+  <Expandable title="RequestItem fields">
+    <ResponseField name="id" type="string (UUID)">Unique identifier of the line item.</ResponseField>
+    <ResponseField name="request" type="integer (FK)">ID of the parent `MarketplaceRequest`.</ResponseField>
+    <ResponseField name="item" type="integer (FK)">ID of the `MarketplaceItem`.</ResponseField>
+    <ResponseField name="quantity" type="integer">Number of units requested.</ResponseField>
+    <ResponseField name="unit_price" type="string (decimal)">Price per unit at time of request.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### `POST /api/finance/marketplace-requests/`
+
+Creates a new marketplace request for a student.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="student" type="integer" required>
+  ID of the `StudentProfile` submitting the request.
+</ParamField>
+<ParamField body="status" type="string (enum)">
+  Initial status. Defaults to `pending`. Options: `pending`, `approved`, `fulfilled`, `cancelled`.
+</ParamField>
+
+```bash
+# Submit a new marketplace request
+curl -X POST https://api.gobarauacademy.edu.ng/api/finance/marketplace-requests/ \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 42,
+    "status": "pending"
+  }'
+```
+
+---
+
+### Request Items
+
+Request items are the individual line items attached to a marketplace request. Each `request` + `item` pair must be unique within a single request.
+
+<Warning>
+  You cannot add the same `item` to the same `request` more than once. If a student needs more of an item, increase the `quantity` on the existing `RequestItem` instead.
+</Warning>
+
+#### `GET /api/finance/request-items/`
+
+Returns all request line items.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier.
+</ResponseField>
+<ResponseField name="request" type="integer (FK)">
+  ID of the parent `MarketplaceRequest`.
+</ResponseField>
+<ResponseField name="item" type="integer (FK)">
+  ID of the `MarketplaceItem` being requested.
+</ResponseField>
+<ResponseField name="quantity" type="integer">
+  Number of units. Defaults to `1`. Must be a positive integer.
+</ResponseField>
+<ResponseField name="unit_price" type="string (decimal)">
+  Price per unit captured at the time of the request.
+</ResponseField>
+
+#### `POST /api/finance/request-items/`
+
+Adds a line item to an existing marketplace request.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="request" type="integer" required>
+  ID of an existing `MarketplaceRequest`.
+</ParamField>
+<ParamField body="item" type="integer" required>
+  ID of the `MarketplaceItem` to request.
+</ParamField>
+<ParamField body="quantity" type="integer" required>
+  Number of units to request. Must be ≥ 1.
+</ParamField>
+<ParamField body="unit_price" type="string (decimal)" required>
+  Unit price at the time of adding the item, e.g., `"1200.00"`.
+</ParamField>
+
+---
+
+### Restock Logs
+
+Restock logs provide a complete, immutable audit trail every time stock is added to a marketplace item. Creation is restricted to admin-level users.
+
+#### `GET /api/finance/restock-logs/`
+
+Returns all restock events ordered by most recent first.
+
+**Permissions:** `IsAuthenticated`, `IsAdminLevel`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the restock event.
+</ResponseField>
+<ResponseField name="item" type="integer (FK)">
+  ID of the `MarketplaceItem` that was restocked.
+</ResponseField>
+<ResponseField name="quantity_added" type="integer">
+  Number of units added during this restock event.
+</ResponseField>
+<ResponseField name="previous_stock" type="integer">
+  Stock level before the restock.
+</ResponseField>
+<ResponseField name="new_stock" type="integer">
+  Stock level after the restock.
+</ResponseField>
+<ResponseField name="restocked_at" type="string (ISO 8601 datetime)">
+  Timestamp when the restock was recorded. Set automatically (`auto_now_add=True`).
+</ResponseField>
+
+#### `POST /api/finance/restock-logs/`
+
+Records a new restock event for a marketplace item.
+
+**Permissions:** `IsAuthenticated`, `IsAdminLevel`
+
+<ParamField body="item" type="integer" required>
+  ID of the `MarketplaceItem` being restocked.
+</ParamField>
+<ParamField body="quantity_added" type="integer" required>
+  Number of units added to stock.
+</ParamField>
+<ParamField body="previous_stock" type="integer" required>
+  Stock level before this restock (for audit accuracy).
+</ParamField>
+<ParamField body="new_stock" type="integer" required>
+  Resulting stock level after the addition.
+</ParamField>

@@ -1,0 +1,197 @@
+---
+title: "Authenticate with Gobarau Academy Backend"
+sidebarTitle: "Authentication"
+description: "Gobarau Academy Backend uses JWT (JSON Web Tokens) via djangorestframework-simplejwt. Learn how to obtain, refresh, and use access tokens in API requests."
+---
+
+Gobarau Academy Backend secures all API endpoints with **JSON Web Tokens (JWT)** provided by `djangorestframework-simplejwt`. Every client — whether a web dashboard, mobile app, or integration script — must exchange valid credentials for an access token and include that token in every subsequent request. Authentication is built on a fully custom `User` model (`accounts.User`) that extends Django's `AbstractUser` with two key additional fields: `role`, which controls what actions the user is permitted to perform across the API, and `wing`, which scopes the user to one of the school's three educational wings.
+
+<Warning>
+  The current `settings.py` has `DEBUG = True` and a hardcoded `SECRET_KEY`. **Neither is safe for production.** Before deploying to any public or staging environment, set `DEBUG = False`, load the secret key from an environment variable (e.g. via `python-decouple` or `os.environ`), configure `ALLOWED_HOSTS`, and switch to a production-grade database such as PostgreSQL.
+</Warning>
+
+---
+
+## User Roles
+
+Every user account is assigned exactly one role. The role determines which permission classes grant or deny access to each endpoint. The full set of roles defined in `core/choices.py` is:
+
+| Role Value | Display Name | Typical Use |
+|---|---|---|
+| `super_admin` | Super Admin | Full system access; platform owner or IT administrator |
+| `principal` | Principal | School-wide administrative access |
+| `vice_principal` | Vice Principal | Deputy administrative access; mirrors principal permissions |
+| `bursar` | Bursar | Finance and fee management access |
+| `teacher` | Teacher | Access to academic records, attendance, and assigned student data |
+| `student` | Student | Access to own academic records and relevant content |
+| `parent` | Parent | Access to their child's (ward's) data only |
+| `alumni` | Alumni | Limited access to alumni-specific resources |
+| `nurse` | School Nurse | Access to health and welfare records |
+| `counsellor` | Counsellor | Access to welfare, counselling sessions, and intervention records |
+
+The default role for newly created users (when no role is specified) is `student`.
+
+---
+
+## Permission Classes
+
+The project defines three custom permission classes in `core/permissions.py` that are applied at the view level throughout all app modules. These classes work alongside DRF's built-in `IsAuthenticated` and check the authenticated user's `role` field.
+
+### `IsAdminLevel`
+
+Grants access to users holding one of the three top-level administrative roles only. All other roles — including teachers and the bursar — are denied.
+
+**Allowed roles:** `super_admin`, `principal`, `vice_principal`
+
+**Used on:** `UserViewSet` (listing and modifying user accounts)
+
+### `IsStaffOrAdmin`
+
+Extends `IsAdminLevel` to also include operational staff roles. This class is appropriate for endpoints that staff members need to read or write as part of daily school operations.
+
+**Allowed roles:** `super_admin`, `principal`, `vice_principal`, `bursar`, `teacher`
+
+**Used on:** `PersonViewSet` (reading and updating person identity records)
+
+### `IsOwnStudent`
+
+Grants admin-level roles unconditional access. Also grants `teacher` role access at the list level. Individual object-level access can be further restricted by app-level views using class-assignment logic to ensure teachers only see students in their assigned classes.
+
+**Allowed roles (list):** `super_admin`, `principal`, `vice_principal`, `teacher`
+
+**Allowed roles (object):** `super_admin`, `principal`, `vice_principal` (always); `teacher` (app-level logic may apply)
+
+### `IsOwnWard`
+
+Grants admin-level roles unconditional access to all student data. Also grants the `parent` role access at the list level, with the expectation that app-level views narrow object-level access to only the parent's own registered wards.
+
+**Allowed roles (list):** `super_admin`, `principal`, `vice_principal`, `parent`
+
+**Allowed roles (object):** `super_admin`, `principal`, `vice_principal` (always); `parent` (ward-assignment logic may apply at the app level)
+
+---
+
+## Obtaining a Token
+
+The `rest_framework_simplejwt` package is installed and configured in `INSTALLED_APPS`, but the token endpoints are **not yet wired into the main URL configuration**. Add the following two paths to `gobarau/urls.py` to enable token issuance and refresh:
+
+```python
+from django.urls import path, include
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
+urlpatterns = [
+    # ... existing patterns ...
+    path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+]
+```
+
+### Obtain an Access Token and Refresh Token
+
+Post a JSON body containing `username` and `password` to receive both a short-lived access token and a longer-lived refresh token:
+
+```bash
+curl -X POST https://your-domain.com/api/token/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "your_username",
+    "password": "your_password"
+  }'
+```
+
+**Success response (`200 OK`):**
+
+```json
+{
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3MjAwMDAwMDB9...",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3MjA2MDAwMDB9..."
+}
+```
+
+### Refresh an Expired Access Token
+
+When the access token expires, use the refresh token to obtain a new access token without requiring the user to re-enter their credentials:
+
+```bash
+curl -X POST https://your-domain.com/api/token/refresh/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }'
+```
+
+**Success response (`200 OK`):**
+
+```json
+{
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3MjAwMDYwMDB9..."
+}
+```
+
+---
+
+## Using the Token
+
+Include the access token in the `Authorization` header of every API request using the `Bearer` scheme:
+
+```bash
+curl -H "Authorization: Bearer <access_token>" \
+     -H "Accept: application/json" \
+     https://your-domain.com/api/accounts/users/
+```
+
+All protected views check for this header. A missing or invalid token returns `401 Unauthorized`. A valid token from a user whose role is insufficient for the requested endpoint returns `403 Forbidden`.
+
+---
+
+## Token Lifecycle
+
+Access tokens are **short-lived** by default (simplejwt defaults to 5 minutes). This limits the window of exposure if a token is intercepted. Refresh tokens are **longer-lived** (simplejwt defaults to 1 day) and should be stored securely on the client.
+
+The recommended flow is:
+
+1. Authenticate once with username and password → receive `access` + `refresh` tokens.
+2. Use `access` token on all API requests.
+3. When the `access` token expires (`401` response), use the `refresh` token to silently obtain a new `access` token.
+4. When the `refresh` token itself expires, prompt the user to log in again.
+
+You can customise token lifetimes in `settings.py` using the `SIMPLE_JWT` configuration dictionary:
+
+```python
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+}
+```
+
+---
+
+## User Model Fields
+
+The custom `User` model (`apps/accounts/models.py`) extends Django's `AbstractUser` with the following fields beyond the standard `username`, `email`, `password`, etc.:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `role` | `CharField` | `student` | The user's role in the school system. Controls permission class access. See [User Roles](#user-roles) above. |
+| `wing` | `CharField` | `regular` | The school wing the user belongs to: `regular`, `islamiyyah`, or `tahfeez`. |
+| `is_verified` | `BooleanField` | `False` | Whether the user's account has been verified (e.g. email confirmed or manually approved). |
+| `preferences` | `JSONField` | `{}` | A flexible JSON store for per-user preferences such as notification settings or UI configuration. |
+
+Both `role` and `wing` are indexed at the database level (`db_index=True`) for fast permission lookups across large user tables.
+
+---
+
+## Wing Choices
+
+Every user account and student enrolment is scoped to one of three wings, each representing a distinct educational programme at Gobarau Academy:
+
+| Wing Value | Display Name | Description |
+|---|---|---|
+| `regular` | Regular | The conventional academic wing following the standard Nigerian curriculum |
+| `islamiyyah` | Islamiyyah | An Islamic studies wing integrating Quranic education with mainstream academics |
+| `tahfeez` | Tahfeez | A dedicated Quran memorisation (Hifz) wing with structured Juz progress tracking |

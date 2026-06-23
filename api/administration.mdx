@@ -1,0 +1,895 @@
+---
+title: "Administration API — Sessions, Campuses, and Grading"
+sidebarTitle: "Administration"
+description: "REST endpoints for school-wide administration: academic sessions, terms, wings, campuses, departments, class levels, and grading scales. Requires admin-level authentication."
+---
+
+The Administration API provides full control over the structural and academic configuration of Gobarau Academy. It covers everything from the singleton school identity record through the entire academic calendar hierarchy (sessions → terms), physical infrastructure (campuses, wings), academic organisation (departments, class levels), and grading policy (grading scales and bands). All nine endpoint groups require an authenticated user whose role is `super_admin`, `principal`, or `vice_principal`.
+
+---
+
+## Authentication Requirements
+
+<Warning>
+  Every endpoint in this API requires **two** permission checks to pass:
+
+  1. **`IsAuthenticated`** — the request must carry a valid session or token.
+  2. **`IsAdminLevel`** — the authenticated user's `role` must be one of `super_admin`, `principal`, or `vice_principal`.
+
+  Any other role (including `teacher`, `bursar`, `student`, etc.) will receive **403 Forbidden**.
+</Warning>
+
+---
+
+## School Settings
+
+Singleton endpoint for the school's global identity record. Only one `SchoolSettings` instance may exist; attempting to `POST` a second record raises a validation error. Use `PATCH` to update individual fields without replacing the whole object.
+
+`SchoolSettings` inherits from `AuditMixin`, which adds `public_id` (UUID), `created_at`, `updated_at`, `created_by`, and `updated_by` to every response.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/school-settings/` |
+| `GET` | `/api/administration/school-settings/{id}/` |
+| `PATCH` | `/api/administration/school-settings/{id}/` |
+| `PUT` | `/api/administration/school-settings/{id}/` |
+
+### Request Fields
+
+<ParamField body="name" type="string" required>
+  The full official name of the school (max 200 characters).
+</ParamField>
+
+<ParamField body="motto" type="string">
+  School motto (max 200 characters). Defaults to an empty string.
+</ParamField>
+
+<ParamField body="logo" type="file">
+  School logo image. Uploaded to the `school/` media path.
+</ParamField>
+
+<ParamField body="address" type="string">
+  Physical address of the school. Defaults to an empty string.
+</ParamField>
+
+<ParamField body="email" type="string">
+  Official contact email address.
+</ParamField>
+
+<ParamField body="phone" type="string">
+  Official contact phone number (max 20 characters).
+</ParamField>
+
+<ParamField body="academic_year" type="string">
+  Current academic year label, e.g. `"2025/2026"` (max 20 characters).
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier for this record.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Full official school name.
+</ResponseField>
+
+<ResponseField name="motto" type="string">
+  School motto.
+</ResponseField>
+
+<ResponseField name="logo" type="string | null">
+  Relative URL of the uploaded logo image, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Physical address.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Official email address.
+</ResponseField>
+
+<ResponseField name="phone" type="string">
+  Official phone number.
+</ResponseField>
+
+<ResponseField name="academic_year" type="string">
+  Current academic year label.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+<ResponseField name="created_by" type="integer | null">
+  Primary key of the user who created this record.
+</ResponseField>
+
+<ResponseField name="updated_by" type="integer | null">
+  Primary key of the user who last modified this record.
+</ResponseField>
+
+### Example
+
+```bash
+# Retrieve the school settings record
+curl -X GET https://api.gobarau.edu.ng/api/administration/school-settings/ \
+  -H "Authorization: Bearer <token>"
+
+# Update the academic year only
+curl -X PATCH https://api.gobarau.edu.ng/api/administration/school-settings/1/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"academic_year": "2025/2026"}'
+```
+
+---
+
+## Academic Sessions
+
+Academic sessions represent a full school year, e.g. `2025/2026`. Terms belong to a session via a foreign key. Only one session should have `is_current` set to `true` at a time.
+
+`AcademicSession` inherits `BaseModel`, providing `public_id`, `created_at`, and `updated_at` on every response.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/academic-sessions/` |
+| `POST` | `/api/administration/academic-sessions/` |
+| `GET` | `/api/administration/academic-sessions/{id}/` |
+| `PUT` | `/api/administration/academic-sessions/{id}/` |
+| `PATCH` | `/api/administration/academic-sessions/{id}/` |
+| `DELETE` | `/api/administration/academic-sessions/{id}/` |
+
+### Request Fields
+
+<ParamField body="name" type="string" required>
+  Human-readable session label, e.g. `"2025/2026"` (max 50 characters).
+</ParamField>
+
+<ParamField body="start_date" type="string (date)" required>
+  Session start date in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="end_date" type="string (date)" required>
+  Session end date in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="is_current" type="boolean">
+  Marks this session as the active one. Defaults to `false`.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Session label.
+</ResponseField>
+
+<ResponseField name="start_date" type="string (date)">
+  Start date of the session.
+</ResponseField>
+
+<ResponseField name="end_date" type="string (date)">
+  End date of the session.
+</ResponseField>
+
+<ResponseField name="is_current" type="boolean">
+  Whether this is the currently active session.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+### Example
+
+```bash
+# List all academic sessions
+curl -X GET https://api.gobarau.edu.ng/api/administration/academic-sessions/ \
+  -H "Authorization: Bearer <token>"
+
+# Create a new academic session
+curl -X POST https://api.gobarau.edu.ng/api/administration/academic-sessions/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "2025/2026",
+    "start_date": "2025-09-01",
+    "end_date": "2026-07-31",
+    "is_current": true
+  }'
+```
+
+### Response Example
+
+```json
+{
+  "id": 3,
+  "public_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "name": "2025/2026",
+  "start_date": "2025-09-01",
+  "end_date": "2026-07-31",
+  "is_current": true,
+  "created_at": "2025-08-15T10:30:00Z",
+  "updated_at": "2025-08-15T10:30:00Z"
+}
+```
+
+---
+
+## Terms
+
+A term is one of three divisions within an academic session: First, Second, or Third. The combination of `session` + `name` must be unique — you cannot create duplicate terms for the same session.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/terms/` |
+| `POST` | `/api/administration/terms/` |
+| `GET` | `/api/administration/terms/{id}/` |
+| `PUT` | `/api/administration/terms/{id}/` |
+| `PATCH` | `/api/administration/terms/{id}/` |
+| `DELETE` | `/api/administration/terms/{id}/` |
+
+### Request Fields
+
+<ParamField body="session" type="integer" required>
+  Primary key of the parent `AcademicSession`.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Term identifier. Must be one of:
+
+  | Value | Label |
+  |-------|-------|
+  | `first` | First Term |
+  | `second` | Second Term |
+  | `third` | Third Term |
+</ParamField>
+
+<ParamField body="start_date" type="string (date)" required>
+  Term start date in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="end_date" type="string (date)" required>
+  Term end date in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="is_current" type="boolean">
+  Marks this term as currently active. Defaults to `false`.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="session" type="integer">
+  Primary key of the parent academic session.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Term value (`first`, `second`, or `third`).
+</ResponseField>
+
+<ResponseField name="start_date" type="string (date)">
+  Term start date.
+</ResponseField>
+
+<ResponseField name="end_date" type="string (date)">
+  Term end date.
+</ResponseField>
+
+<ResponseField name="is_current" type="boolean">
+  Whether this term is currently active.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+### Example
+
+```bash
+# Create the First Term for session ID 3
+curl -X POST https://api.gobarau.edu.ng/api/administration/terms/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session": 3,
+    "name": "first",
+    "start_date": "2025-09-01",
+    "end_date": "2025-12-15",
+    "is_current": true
+  }'
+```
+
+---
+
+## Wings
+
+Wings represent organisational divisions within the school: Regular, Islamiyyah, and Tahfeez. Users are assigned to a wing; this model defines the wings themselves with optional visual and descriptive metadata.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/wings/` |
+| `POST` | `/api/administration/wings/` |
+| `GET` | `/api/administration/wings/{id}/` |
+| `PUT` | `/api/administration/wings/{id}/` |
+| `PATCH` | `/api/administration/wings/{id}/` |
+| `DELETE` | `/api/administration/wings/{id}/` |
+
+### Request Fields
+
+<ParamField body="name" type="string" required>
+  Wing identifier. Must be one of:
+
+  | Value | Label |
+  |-------|-------|
+  | `regular` | Regular |
+  | `islamiyyah` | Islamiyyah |
+  | `tahfeez` | Tahfeez |
+</ParamField>
+
+<ParamField body="color_code" type="string">
+  Hex colour code for UI theming, e.g. `"#3B82F6"` (max 7 characters). Defaults to an empty string.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional text describing the wing's purpose.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Wing value (`regular`, `islamiyyah`, or `tahfeez`).
+</ResponseField>
+
+<ResponseField name="color_code" type="string">
+  Hex colour code string.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Descriptive text for the wing.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+### Example
+
+```bash
+# Create the Tahfeez wing
+curl -X POST https://api.gobarau.edu.ng/api/administration/wings/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "tahfeez",
+    "color_code": "#10B981",
+    "description": "Quran memorisation wing"
+  }'
+```
+
+---
+
+## Campuses
+
+Campuses represent physical branch locations of the school. Each campus may have a designated principal (a `User` foreign key). One campus can be flagged as the main campus via `is_main`.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/campuses/` |
+| `POST` | `/api/administration/campuses/` |
+| `GET` | `/api/administration/campuses/{id}/` |
+| `PUT` | `/api/administration/campuses/{id}/` |
+| `PATCH` | `/api/administration/campuses/{id}/` |
+| `DELETE` | `/api/administration/campuses/{id}/` |
+
+### Request Fields
+
+<ParamField body="name" type="string" required>
+  Campus name (max 200 characters).
+</ParamField>
+
+<ParamField body="address" type="string">
+  Physical address of the campus.
+</ParamField>
+
+<ParamField body="phone" type="string">
+  Campus contact phone number (max 20 characters).
+</ParamField>
+
+<ParamField body="principal" type="integer | null">
+  Primary key of the `User` record assigned as campus principal. Nullable.
+</ParamField>
+
+<ParamField body="is_main" type="boolean">
+  Whether this is the school's main campus. Defaults to `false`.
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Whether this campus is currently operational. Defaults to `true`.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Campus name.
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Physical address.
+</ResponseField>
+
+<ResponseField name="phone" type="string">
+  Contact phone number.
+</ResponseField>
+
+<ResponseField name="principal" type="integer | null">
+  User PK of the assigned principal.
+</ResponseField>
+
+<ResponseField name="is_main" type="boolean">
+  Main campus flag.
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Active status of the campus.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+### Example
+
+```bash
+# Create a campus and assign a principal
+curl -X POST https://api.gobarau.edu.ng/api/administration/campuses/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Main Campus",
+    "address": "1 School Road, Kano",
+    "phone": "+2348012345678",
+    "principal": 7,
+    "is_main": true,
+    "is_active": true
+  }'
+```
+
+---
+
+## Departments
+
+Departments organise academic subjects and staff. Each department has a unique short code and an optional `head` user reference.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/departments/` |
+| `POST` | `/api/administration/departments/` |
+| `GET` | `/api/administration/departments/{id}/` |
+| `PUT` | `/api/administration/departments/{id}/` |
+| `PATCH` | `/api/administration/departments/{id}/` |
+| `DELETE` | `/api/administration/departments/{id}/` |
+
+### Request Fields
+
+<ParamField body="name" type="string" required>
+  Department name (max 200 characters).
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  Unique short code for the department, e.g. `"MATH"` (max 20 characters). Must be unique across all departments.
+</ParamField>
+
+<ParamField body="head" type="integer | null">
+  Primary key of the `User` record assigned as department head. Nullable.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Department name.
+</ResponseField>
+
+<ResponseField name="code" type="string">
+  Unique department code.
+</ResponseField>
+
+<ResponseField name="head" type="integer | null">
+  User PK of the department head.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+### Example
+
+```bash
+# Create a Mathematics department
+curl -X POST https://api.gobarau.edu.ng/api/administration/departments/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Mathematics",
+    "code": "MATH",
+    "head": 12
+  }'
+```
+
+---
+
+## Class Levels
+
+Class levels define the academic grades within the school (e.g. JSS 1, SS 2). Each level belongs to an `education_tier` and carries an `order_index` for display ordering.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/class-levels/` |
+| `POST` | `/api/administration/class-levels/` |
+| `GET` | `/api/administration/class-levels/{id}/` |
+| `PUT` | `/api/administration/class-levels/{id}/` |
+| `PATCH` | `/api/administration/class-levels/{id}/` |
+| `DELETE` | `/api/administration/class-levels/{id}/` |
+
+### Request Fields
+
+<ParamField body="name" type="string" required>
+  Display name of the class level, e.g. `"JSS 1"` (max 100 characters).
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  Unique short code, e.g. `"JSS1"` (max 20 characters). Must be unique across all class levels.
+</ParamField>
+
+<ParamField body="order_index" type="integer">
+  Integer used to sort class levels in the correct progression. Defaults to `0`.
+</ParamField>
+
+<ParamField body="education_tier" type="string" required>
+  Tier this class level belongs to. Must be one of:
+
+  | Value | Label |
+  |-------|-------|
+  | `primary` | Primary |
+  | `jss` | JSS |
+  | `sss` | SSS |
+
+  Defaults to `primary`.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Display name of the class level.
+</ResponseField>
+
+<ResponseField name="code" type="string">
+  Unique class level code.
+</ResponseField>
+
+<ResponseField name="order_index" type="integer">
+  Sort order index.
+</ResponseField>
+
+<ResponseField name="education_tier" type="string">
+  Tier value: `primary`, `jss`, or `sss`.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+### Example
+
+```bash
+# Create the JSS 1 class level
+curl -X POST https://api.gobarau.edu.ng/api/administration/class-levels/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "JSS 1",
+    "code": "JSS1",
+    "order_index": 4,
+    "education_tier": "jss"
+  }'
+```
+
+---
+
+## Grading Scales
+
+A grading scale is a named policy that groups grading bands and is optionally tied to a specific academic session. Mark one scale as `is_active` to designate it as the currently applied policy.
+
+`GradingScale` inherits from `AuditMixin`, adding `created_by` and `updated_by` to the response.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/grading-scales/` |
+| `POST` | `/api/administration/grading-scales/` |
+| `GET` | `/api/administration/grading-scales/{id}/` |
+| `PUT` | `/api/administration/grading-scales/{id}/` |
+| `PATCH` | `/api/administration/grading-scales/{id}/` |
+| `DELETE` | `/api/administration/grading-scales/{id}/` |
+
+### Request Fields
+
+<ParamField body="name" type="string" required>
+  Grading scale name, e.g. `"Standard 100-Point Scale"` (max 200 characters).
+</ParamField>
+
+<ParamField body="session" type="integer | null">
+  Primary key of the `AcademicSession` this scale applies to. Nullable — a scale may be session-agnostic.
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Marks this scale as the currently active grading policy. Defaults to `false`.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Grading scale name.
+</ResponseField>
+
+<ResponseField name="session" type="integer | null">
+  FK to the associated academic session, or `null`.
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Whether this is the active grading scale.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+<ResponseField name="created_by" type="integer | null">
+  User PK of the creator.
+</ResponseField>
+
+<ResponseField name="updated_by" type="integer | null">
+  User PK of the last editor.
+</ResponseField>
+
+### Example
+
+```bash
+# Create a grading scale tied to session 3
+curl -X POST https://api.gobarau.edu.ng/api/administration/grading-scales/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "2025/2026 Grading Policy",
+    "session": 3,
+    "is_active": true
+  }'
+```
+
+---
+
+## Grading Bands
+
+Grading bands define the score ranges within a grading scale. Each band maps a numeric score range to a grade letter, optional grade point, and a descriptive remark. A band's `min_score` must not exceed its `max_score`.
+
+<Note>
+  The model enforces `min_score <= max_score` at the Django model validation layer (`clean()`). Bands are ordered by `max_score` descending in all list responses.
+</Note>
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/administration/grading-bands/` |
+| `POST` | `/api/administration/grading-bands/` |
+| `GET` | `/api/administration/grading-bands/{id}/` |
+| `PUT` | `/api/administration/grading-bands/{id}/` |
+| `PATCH` | `/api/administration/grading-bands/{id}/` |
+| `DELETE` | `/api/administration/grading-bands/{id}/` |
+
+### Request Fields
+
+<ParamField body="grading_scale" type="integer" required>
+  Primary key of the parent `GradingScale`.
+</ParamField>
+
+<ParamField body="min_score" type="number" required>
+  Lower bound of the score range (decimal, max 5 digits with 2 decimal places). Must not be greater than `max_score`.
+</ParamField>
+
+<ParamField body="max_score" type="number" required>
+  Upper bound of the score range (decimal, max 5 digits with 2 decimal places).
+</ParamField>
+
+<ParamField body="grade" type="string" required>
+  Grade letter or symbol awarded in this range, e.g. `"A"`, `"B+"` (max 5 characters).
+</ParamField>
+
+<ParamField body="grade_point" type="number | null">
+  GPA-equivalent point value for this grade (decimal, max 3 digits with 2 decimal places). Nullable.
+</ParamField>
+
+<ParamField body="remark" type="string">
+  Descriptive label for the grade band, e.g. `"Distinction"` (max 200 characters). Defaults to an empty string.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="grading_scale" type="integer">
+  FK to the parent grading scale.
+</ResponseField>
+
+<ResponseField name="min_score" type="string (decimal)">
+  Lower bound of the score range.
+</ResponseField>
+
+<ResponseField name="max_score" type="string (decimal)">
+  Upper bound of the score range.
+</ResponseField>
+
+<ResponseField name="grade" type="string">
+  Grade letter for this band.
+</ResponseField>
+
+<ResponseField name="grade_point" type="string (decimal) | null">
+  GPA equivalent, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="remark" type="string">
+  Descriptive remark for this grade band.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+### Example
+
+```bash
+# Create an "A" grade band (70–100) under grading scale ID 1
+curl -X POST https://api.gobarau.edu.ng/api/administration/grading-bands/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grading_scale": 1,
+    "min_score": "70.00",
+    "max_score": "100.00",
+    "grade": "A",
+    "grade_point": "4.00",
+    "remark": "Distinction"
+  }'
+
+# Create a "B" grade band (60–69)
+curl -X POST https://api.gobarau.edu.ng/api/administration/grading-bands/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grading_scale": 1,
+    "min_score": "60.00",
+    "max_score": "69.99",
+    "grade": "B",
+    "grade_point": "3.00",
+    "remark": "Credit"
+  }'
+```
+
+---
+
+## Endpoint Summary
+
+| Resource | Base URL | Inherits |
+|----------|----------|----------|
+| School Settings | `/api/administration/school-settings/` | `AuditMixin` (singleton) |
+| Academic Sessions | `/api/administration/academic-sessions/` | `BaseModel` |
+| Terms | `/api/administration/terms/` | `BaseModel` |
+| Wings | `/api/administration/wings/` | `BaseModel` |
+| Campuses | `/api/administration/campuses/` | `BaseModel` |
+| Departments | `/api/administration/departments/` | `BaseModel` |
+| Class Levels | `/api/administration/class-levels/` | `BaseModel` |
+| Grading Scales | `/api/administration/grading-scales/` | `AuditMixin` |
+| Grading Bands | `/api/administration/grading-bands/` | `BaseModel` |
+
+<Tip>
+  All resources that inherit `BaseModel` include `public_id` (UUID), `created_at`, and `updated_at` in every response. Resources inheriting `AuditMixin` additionally include `created_by` and `updated_by` user FKs.
+</Tip>

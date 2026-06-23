@@ -1,0 +1,267 @@
+---
+title: "Gobarau Backend Architecture and Application Structure"
+sidebarTitle: "Architecture"
+description: "How Gobarau Academy Backend is structured: ten Django apps, shared core abstractions, REST API routing, and the multi-wing campus model."
+---
+
+Gobarau Academy Backend is a Django REST Framework application organised into a single Django project (`gobarau/`) containing eleven installed apps — one shared `core` library and ten domain-specific apps under the `apps/` namespace. Every domain exposes its resources through a versioned REST API mounted under `/api/<domain>/`. Shared behaviour — UUID primary keys, soft-delete, audit trails, role choices, and permission enforcement — lives in `core/` so that each domain app stays focused on its own business logic. The custom user model (`accounts.User`) extends Django's `AbstractUser` and is declared as `AUTH_USER_MODEL`, giving every part of the system a single, consistent identity root.
+
+## Application Layout
+
+The repository is divided into three top-level layers:
+
+| Path | Purpose |
+|------|---------|
+| `gobarau/` | Django project configuration — `settings.py`, `urls.py`, `wsgi.py` |
+| `core/` | Shared abstractions — base models, managers, choices, permission classes |
+| `apps/` | Ten domain apps, each with its own models, serializers, views, and URLs |
+
+### `gobarau/` — Project Configuration
+
+The project root holds global settings (installed apps, database, JWT config, Cloudinary storage, CORS headers) and the master URL dispatcher that includes each app's router.
+
+### `core/` — Shared Abstractions
+
+The `core` package is not a domain app — it ships no API endpoints of its own. It provides the building blocks every domain app inherits:
+
+- **`core/models.py`** — Four abstract base models (`BaseModel`, `TimeStampedModel`, `SoftDeleteModel`, `AuditMixin`)
+- **`core/managers.py`** — Three custom queryset managers (`ActiveManager`, `ArchivedManager`, `SoftDeleteManager`)
+- **`core/choices.py`** — All `TextChoices` enumerations: roles, wings, gender, terms, enrollment statuses, payment statuses, and more
+- **`core/permissions.py`** — Four DRF permission classes (`IsAdminLevel`, `IsStaffOrAdmin`, `IsOwnStudent`, `IsOwnWard`)
+
+### `apps/` — Domain Apps
+
+<CardGroup cols={2}>
+  <Card title="accounts" href="/api/accounts">
+    Authentication, the custom `User` model, `Person` identity records, and JWT token endpoints.
+  </Card>
+  <Card title="administration" href="/api/administration">
+    Campus management, Wing configuration, Academic Sessions, Terms, and school-wide settings.
+  </Card>
+  <Card title="people" href="/api/people">
+    Role profiles for students, teachers, parents, and alumni. Class enrollments and ward relationships.
+  </Card>
+  <Card title="academics" href="/api/academics">
+    Classes, subjects, timetables, scores, report cards, attendance, exams, and Tahfeez (Juz) progress.
+  </Card>
+  <Card title="admissions" href="/api/admissions">
+    Admission applications, application status tracking, and applicant onboarding workflows.
+  </Card>
+  <Card title="finance" href="/api/finance">
+    Fee structures, invoices, payment records, and bursar-level financial reporting.
+  </Card>
+  <Card title="communication" href="/api/communication">
+    Announcements, internal messaging, and push notifications across all user roles.
+  </Card>
+  <Card title="content" href="/api/content">
+    Learning materials, library book borrowing, and digital content distribution.
+  </Card>
+  <Card title="welfare" href="/api/welfare">
+    Health records, counselling sessions, disciplinary tracking, and student merit/demerit logs.
+  </Card>
+  <Card title="services" href="/api/services">
+    Transport routes, service requests, and other operational school services.
+  </Card>
+</CardGroup>
+
+## API Routing
+
+All domain apps are mounted under the `/api/` prefix in `gobarau/urls.py`. Each app's own `urls.py` registers its ViewSets with a DRF `DefaultRouter`, so every resource automatically gets list, detail, create, update, and destroy endpoints.
+
+```python
+# gobarau/urls.py
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path("api/accounts/", include("apps.accounts.urls")),
+    path("api/administration/", include("apps.administration.urls")),
+    path("api/academics/", include("apps.academics.urls")),
+    path("api/admissions/", include("apps.admissions.urls")),
+    path("api/people/", include("apps.people.urls")),
+    path("api/finance/", include("apps.finance.urls")),
+    path("api/communication/", include("apps.communication.urls")),
+    path("api/content/", include("apps.content.urls")),
+    path("api/welfare/", include("apps.welfare.urls")),
+    path("api/services/", include("apps.services.urls")),
+]
+```
+
+The resulting URL structure follows the pattern:
+
+```
+/api/accounts/users/
+/api/accounts/users/{public_id}/
+/api/people/students/
+/api/people/students/{public_id}/
+/api/academics/classes/
+/api/academics/classes/{public_id}/
+...
+```
+
+<Note>
+  The Django admin panel is available at `/admin/` and is powered by **django-unfold** for an enhanced UI experience.
+</Note>
+
+## Core Base Models
+
+All domain models inherit from one or more of the four abstract base models defined in `core/models.py`. This ensures every record in the system has a consistent set of fields and behaviours.
+
+### `BaseModel`
+
+The root abstract model. Every concrete model that needs an external-facing identifier and timestamps should extend `BaseModel`.
+
+```python
+class BaseModel(models.Model):
+    """Abstract base model providing public UUID and timestamps."""
+    public_id = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
+        unique=True,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `public_id` | `UUIDField` | Auto-generated UUID used as the external-facing identifier in all API responses |
+| `created_at` | `DateTimeField` | Set automatically when the record is first saved |
+| `updated_at` | `DateTimeField` | Updated automatically on every save |
+
+### `TimeStampedModel`
+
+A lightweight variant that provides timestamps only — no UUID. Use this for join or through-table models that don't need an external identifier.
+
+```python
+class TimeStampedModel(models.Model):
+    """Lightweight abstract model with only timestamps (no UUID)."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+```
+
+### `SoftDeleteModel`
+
+Extends `BaseModel` with archive (soft-delete) capability. Records are never hard-deleted — they are flagged `is_archived=True` and filtered out of the default queryset.
+
+```python
+class SoftDeleteModel(BaseModel):
+    """Abstract model with soft-delete (archive) capability."""
+    is_archived = models.BooleanField(default=False, db_index=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        db_index=True,
+    )
+    objects = ActiveManager()
+    all_objects = SoftDeleteManager()
+    archived = ArchivedManager()
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+
+    def archive(self, user=None):
+        """Mark this record as archived."""
+        self.is_archived = True
+        self.archived_at = timezone.now()
+        if user and user.is_authenticated:
+            self.archived_by = user
+        self.save(update_fields=["is_archived", "archived_at", "archived_by"])
+
+    def restore(self):
+        """Restore an archived record."""
+        self.is_archived = False
+        self.archived_at = None
+        self.archived_by = None
+        self.save(update_fields=["is_archived", "archived_at", "archived_by"])
+```
+
+| Field / Method | Description |
+|----------------|-------------|
+| `is_archived` | Boolean flag; `True` means the record is soft-deleted |
+| `archived_at` | Timestamp of when `.archive()` was called |
+| `archived_by` | FK to the `User` who triggered the archive |
+| `.archive(user)` | Marks the record as archived, recording who did it |
+| `.restore()` | Clears the archive flag and nullifies archive metadata |
+| `.objects` | Default manager — returns **active** records only |
+| `.all_objects` | Returns **all** records regardless of archive state |
+| `.archived` | Returns **archived** records only |
+
+### `AuditMixin`
+
+Extends `BaseModel` with `created_by` and `updated_by` foreign keys to track which user created or last modified a record.
+
+```python
+class AuditMixin(BaseModel):
+    """Abstract mixin tracking who created/modified a record."""
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        db_index=True,
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        db_index=True,
+    )
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+```
+
+<Tip>
+  Many core domain models (e.g. `Person`, `StudentProfile`, `TeacherProfile`) inherit **both** `SoftDeleteModel` and `AuditMixin`, combining soft-delete protection with a full audit trail in a single model class.
+</Tip>
+
+## Multi-Wing Model
+
+Gobarau Academy operates three distinct educational wings, each with its own curriculum, class structure, and teaching staff. The wing a student belongs to determines which classes they can be assigned to, which subjects appear in their timetable, and which records are tracked in the Tahfeez module.
+
+| Wing | Value | Description |
+|------|-------|-------------|
+| **Regular** | `regular` | Standard national curriculum classes |
+| **Islamiyyah** | `islamiyyah` | Islamic studies integrated curriculum |
+| **Tahfeez** | `tahfeez` | Quran memorisation (Hifz) programme |
+
+Wing assignment appears in three places:
+
+1. **`User.wing`** — set at the user account level, acts as the primary wing affiliation
+2. **`StudentProfile.wing`** — a FK to `administration.Wing`, refining the student's specific wing record within their campus
+3. **`StudentProfile.campus`** — a FK to `administration.Campus`, enabling multi-campus deployments where wings may differ by location
+
+The **Tahfeez** wing additionally unlocks the `JuzProgress` and `RecitationSession` models in the `academics` app, which track each student's memorisation progress through the 30 Juz of the Quran.
+
+## Tech Stack
+
+| Technology | Role |
+|-----------|------|
+| **Python / Django 6** | Web framework and ORM |
+| **Django REST Framework** | API serialization, ViewSets, routers, authentication |
+| **djangorestframework-simplejwt** | JWT-based authentication (`/api/accounts/token/`) |
+| **django-unfold** | Enhanced Django admin UI with filters, forms, and import/export integration |
+| **django-import-export** | Bulk data import and export from the admin panel |
+| **Cloudinary / cloudinary-storage** | Cloud media storage for profile photos and uploaded content |
+| **django-cors-headers** | CORS policy management for frontend clients |
+| **SQLite** | Default development database (switchable to PostgreSQL for production) |

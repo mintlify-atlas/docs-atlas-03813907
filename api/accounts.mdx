@@ -1,0 +1,549 @@
+---
+title: "Accounts API — Users and Person Identity Records"
+sidebarTitle: "Accounts"
+description: "REST endpoints for user accounts and person identity management. Create and manage User authentication records and Person demographic profiles across all roles."
+---
+
+The Accounts API is built around a deliberate two-model architecture: **`User`** handles authentication credentials, role assignment, and system access, while **`Person`** stores every piece of demographic and contact information about the human behind that account. A `Person` optionally links to a `User` via a one-to-one relationship — allowing the school to maintain identity records for individuals (such as parents or prospective students) who do not yet have login access. Together these two models form the identity backbone for all other modules in Gobarau Academy.
+
+<Note>
+  **User vs Person design**: `User` is Django's authentication record — it stores the login credentials, role, and wing assignment that govern what a principal, teacher, or student can access. `Person` is the demographic profile — it stores names, dates of birth, contact details, nationality, and any custom metadata. Keeping these concerns separate means you can manage a person's demographic record independently of their login account, and you can bulk-import identity data before accounts are issued.
+</Note>
+
+---
+
+## Authentication Requirements
+
+All endpoints in the Accounts API require a valid authenticated session or bearer token. The specific permission class varies by resource:
+
+| Endpoint | Permission |
+|----------|-----------|
+| `/api/accounts/users/` | `IsAuthenticated` + `IsAdminLevel` |
+| `/api/accounts/people/` | `IsAuthenticated` + `IsStaffOrAdmin` |
+
+<Warning>
+  **`IsAdminLevel`** restricts access to users whose `role` is `super_admin`, `principal`, or `vice_principal`.
+
+  **`IsStaffOrAdmin`** extends this to also allow `bursar` and `teacher` roles. Any other role (e.g. `student`, `parent`) will receive **403 Forbidden**.
+</Warning>
+
+---
+
+## Users
+
+The Users endpoint manages `User` records — the authentication and authorisation layer for every person in the system. A user's `role` determines their permissions across the entire API, and their `wing` places them in one of the school's organisational divisions.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/accounts/users/` |
+| `POST` | `/api/accounts/users/` |
+| `GET` | `/api/accounts/users/{id}/` |
+| `PUT` | `/api/accounts/users/{id}/` |
+| `PATCH` | `/api/accounts/users/{id}/` |
+| `DELETE` | `/api/accounts/users/{id}/` |
+
+### Request Fields
+
+<ParamField body="username" type="string" required>
+  Unique login username. Inherited from Django's `AbstractUser`.
+</ParamField>
+
+<ParamField body="email" type="string">
+  User's email address. Inherited from `AbstractUser`.
+</ParamField>
+
+<ParamField body="first_name" type="string">
+  First name on the authentication record. Inherited from `AbstractUser`.
+</ParamField>
+
+<ParamField body="last_name" type="string">
+  Last name on the authentication record. Inherited from `AbstractUser`.
+</ParamField>
+
+<ParamField body="password" type="string">
+  Login password. Should be sent only on creation or password-change requests. Django stores this as a hashed value.
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  Role assigned to the user. Controls permission level throughout the API. Must be one of:
+
+  | Value | Label |
+  |-------|-------|
+  | `super_admin` | Super Admin |
+  | `principal` | Principal |
+  | `vice_principal` | Vice Principal |
+  | `bursar` | Bursar |
+  | `teacher` | Teacher |
+  | `student` | Student |
+  | `parent` | Parent |
+  | `alumni` | Alumni |
+  | `nurse` | School Nurse |
+  | `counsellor` | Counsellor |
+
+  Defaults to `student`.
+</ParamField>
+
+<ParamField body="wing" type="string">
+  Wing the user belongs to. Must be one of:
+
+  | Value | Label |
+  |-------|-------|
+  | `regular` | Regular |
+  | `islamiyyah` | Islamiyyah |
+  | `tahfeez` | Tahfeez |
+
+  Defaults to `regular`.
+</ParamField>
+
+<ParamField body="is_verified" type="boolean">
+  Indicates whether the user's identity has been verified by an administrator. Defaults to `false`.
+</ParamField>
+
+<ParamField body="preferences" type="object">
+  Free-form JSON object for storing user-specific UI or notification preferences. Defaults to `{}`.
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Whether the user account is active. Inherited from `AbstractUser`. Defaults to `true`.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  Unique login username.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Email address.
+</ResponseField>
+
+<ResponseField name="first_name" type="string">
+  First name.
+</ResponseField>
+
+<ResponseField name="last_name" type="string">
+  Last name.
+</ResponseField>
+
+<ResponseField name="role" type="string">
+  The user's assigned role value (e.g. `"teacher"`, `"student"`).
+</ResponseField>
+
+<ResponseField name="wing" type="string">
+  Wing assignment value (e.g. `"regular"`, `"tahfeez"`).
+</ResponseField>
+
+<ResponseField name="is_verified" type="boolean">
+  Identity verification status.
+</ResponseField>
+
+<ResponseField name="preferences" type="object">
+  JSON preferences object.
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Whether this account is active.
+</ResponseField>
+
+<ResponseField name="is_staff" type="boolean">
+  Django admin site access flag. Inherited from `AbstractUser`.
+</ResponseField>
+
+<ResponseField name="is_superuser" type="boolean">
+  Django superuser flag. Inherited from `AbstractUser`.
+</ResponseField>
+
+<ResponseField name="date_joined" type="string (ISO 8601)">
+  Timestamp of account creation. Inherited from `AbstractUser`.
+</ResponseField>
+
+<ResponseField name="last_login" type="string (ISO 8601) | null">
+  Timestamp of the most recent login. Inherited from `AbstractUser`.
+</ResponseField>
+
+<ResponseField name="groups" type="array">
+  List of Django permission group IDs. Inherited from `AbstractUser`.
+</ResponseField>
+
+<ResponseField name="user_permissions" type="array">
+  List of explicit Django permission IDs. Inherited from `AbstractUser`.
+</ResponseField>
+
+### Examples
+
+```bash
+# List all users (admin-level only)
+curl -X GET https://api.gobarau.edu.ng/api/accounts/users/ \
+  -H "Authorization: Bearer <token>"
+
+# Create a new teacher account in the Islamiyyah wing
+curl -X POST https://api.gobarau.edu.ng/api/accounts/users/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "malam.ibrahim",
+    "email": "ibrahim@gobarau.edu.ng",
+    "first_name": "Ibrahim",
+    "last_name": "Abdullahi",
+    "password": "SecurePass123!",
+    "role": "teacher",
+    "wing": "islamiyyah",
+    "is_verified": true
+  }'
+
+# Promote an existing user to vice_principal
+curl -X PATCH https://api.gobarau.edu.ng/api/accounts/users/14/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "vice_principal"}'
+```
+
+### Response Example
+
+```json
+{
+  "id": 14,
+  "username": "malam.ibrahim",
+  "email": "ibrahim@gobarau.edu.ng",
+  "first_name": "Ibrahim",
+  "last_name": "Abdullahi",
+  "role": "teacher",
+  "wing": "islamiyyah",
+  "is_verified": true,
+  "preferences": {},
+  "is_active": true,
+  "is_staff": false,
+  "is_superuser": false,
+  "date_joined": "2025-08-15T09:00:00Z",
+  "last_login": null,
+  "groups": [],
+  "user_permissions": []
+}
+```
+
+---
+
+## People
+
+The People endpoint manages `Person` records — the full demographic and contact profile for every human in the system. A person may or may not have a linked `User` account. The `full_name` field is a read-only computed property assembled from `first_name`, `middle_name`, and `last_name`.
+
+`Person` inherits from both `SoftDeleteModel` and `AuditMixin`. Soft-deleted records (where `is_archived = true`) are excluded from the default queryset but remain in the database. The response also includes `created_by` and `updated_by` audit fields.
+
+| Method | URL |
+|--------|-----|
+| `GET` | `/api/accounts/people/` |
+| `POST` | `/api/accounts/people/` |
+| `GET` | `/api/accounts/people/{id}/` |
+| `PUT` | `/api/accounts/people/{id}/` |
+| `PATCH` | `/api/accounts/people/{id}/` |
+| `DELETE` | `/api/accounts/people/{id}/` |
+
+<Tip>
+  Results are ordered by `last_name`, then `first_name` by default. Use filtering or search on your client side if you need a different ordering.
+</Tip>
+
+### Request Fields
+
+<ParamField body="user" type="integer | null">
+  Primary key of the linked `User` account. One-to-one — each user can have at most one `Person` record. Leave `null` for individuals who do not yet have a login account.
+</ParamField>
+
+<ParamField body="first_name" type="string" required>
+  Legal first name (max 100 characters).
+</ParamField>
+
+<ParamField body="last_name" type="string" required>
+  Legal last name (max 100 characters).
+</ParamField>
+
+<ParamField body="middle_name" type="string">
+  Middle name (max 100 characters). Defaults to an empty string.
+</ParamField>
+
+<ParamField body="preferred_name" type="string">
+  Name the person prefers to be called (max 100 characters). Defaults to an empty string.
+</ParamField>
+
+<ParamField body="date_of_birth" type="string (date)">
+  Date of birth in `YYYY-MM-DD` format. Nullable.
+</ParamField>
+
+<ParamField body="gender" type="string">
+  Gender code. Must be one of:
+
+  | Value | Label |
+  |-------|-------|
+  | `M` | Male |
+  | `F` | Female |
+
+  Defaults to an empty string (not specified).
+</ParamField>
+
+<ParamField body="state_of_origin" type="string">
+  Nigerian state of origin. Must be one of the 36 state slugs (e.g. `"kano"`, `"lagos"`, `"fct"`) or left blank. Defaults to an empty string.
+</ParamField>
+
+<ParamField body="lga" type="string">
+  Local Government Area (max 100 characters). Defaults to an empty string.
+</ParamField>
+
+<ParamField body="religion" type="string">
+  Religion of the person (max 50 characters). Defaults to an empty string.
+</ParamField>
+
+<ParamField body="nationality" type="string">
+  Nationality (max 50 characters). Defaults to `"Nigerian"`.
+</ParamField>
+
+<ParamField body="phone_primary" type="string">
+  Primary contact phone number (max 20 characters). Indexed for fast lookup.
+</ParamField>
+
+<ParamField body="phone_secondary" type="string">
+  Secondary contact phone number (max 20 characters).
+</ParamField>
+
+<ParamField body="email_personal" type="string">
+  Personal email address (distinct from the login `User.email`).
+</ParamField>
+
+<ParamField body="address" type="string">
+  Residential or contact address.
+</ParamField>
+
+<ParamField body="photo" type="file">
+  Profile photo. Uploaded to `people/photos/`.
+</ParamField>
+
+<ParamField body="national_id" type="string">
+  National Identity Number (NIN) or equivalent (max 50 characters).
+</ParamField>
+
+<ParamField body="external_ref" type="string">
+  External reference or legacy system ID (max 100 characters).
+</ParamField>
+
+<ParamField body="language" type="string">
+  Preferred language for communication (max 50 characters). Defaults to `"English"`.
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Arbitrary JSON object for additional structured data (e.g. custom intake form answers). Defaults to `{}`.
+</ParamField>
+
+### Response Fields
+
+<ResponseField name="id" type="integer">
+  Database primary key.
+</ResponseField>
+
+<ResponseField name="public_id" type="string (UUID)">
+  Stable public identifier.
+</ResponseField>
+
+<ResponseField name="user" type="integer | null">
+  FK to the linked `User`, or `null` if no account is linked.
+</ResponseField>
+
+<ResponseField name="full_name" type="string">
+  **Read-only computed property.** Assembled as `first_name + middle_name + last_name` with blank middle names omitted.
+</ResponseField>
+
+<ResponseField name="first_name" type="string">
+  Legal first name.
+</ResponseField>
+
+<ResponseField name="last_name" type="string">
+  Legal last name.
+</ResponseField>
+
+<ResponseField name="middle_name" type="string">
+  Middle name, or empty string.
+</ResponseField>
+
+<ResponseField name="preferred_name" type="string">
+  Preferred name, or empty string.
+</ResponseField>
+
+<ResponseField name="date_of_birth" type="string (date) | null">
+  Date of birth.
+</ResponseField>
+
+<ResponseField name="gender" type="string">
+  Gender code (`M`, `F`, or empty string).
+</ResponseField>
+
+<ResponseField name="state_of_origin" type="string">
+  Nigerian state slug, or empty string.
+</ResponseField>
+
+<ResponseField name="lga" type="string">
+  Local government area, or empty string.
+</ResponseField>
+
+<ResponseField name="religion" type="string">
+  Religion, or empty string.
+</ResponseField>
+
+<ResponseField name="nationality" type="string">
+  Nationality.
+</ResponseField>
+
+<ResponseField name="phone_primary" type="string">
+  Primary phone number.
+</ResponseField>
+
+<ResponseField name="phone_secondary" type="string">
+  Secondary phone number.
+</ResponseField>
+
+<ResponseField name="email_personal" type="string">
+  Personal email address.
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Residential address.
+</ResponseField>
+
+<ResponseField name="photo" type="string | null">
+  Relative URL of the uploaded profile photo, or `null`.
+</ResponseField>
+
+<ResponseField name="national_id" type="string">
+  National Identity Number, or empty string.
+</ResponseField>
+
+<ResponseField name="external_ref" type="string">
+  External reference ID, or empty string.
+</ResponseField>
+
+<ResponseField name="language" type="string">
+  Preferred language.
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Custom JSON metadata.
+</ResponseField>
+
+<ResponseField name="is_archived" type="boolean">
+  Whether this record has been soft-deleted.
+</ResponseField>
+
+<ResponseField name="archived_at" type="string (ISO 8601) | null">
+  Timestamp of archival, or `null` if not archived.
+</ResponseField>
+
+<ResponseField name="archived_by" type="integer | null">
+  User PK who archived this record, or `null`.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (ISO 8601)">
+  Timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (ISO 8601)">
+  Timestamp of last update.
+</ResponseField>
+
+<ResponseField name="created_by" type="integer | null">
+  User PK of the creator.
+</ResponseField>
+
+<ResponseField name="updated_by" type="integer | null">
+  User PK of the last editor.
+</ResponseField>
+
+### Examples
+
+```bash
+# List all person records (staff and admin roles)
+curl -X GET https://api.gobarau.edu.ng/api/accounts/people/ \
+  -H "Authorization: Bearer <token>"
+
+# Create a person record linked to user ID 14
+curl -X POST https://api.gobarau.edu.ng/api/accounts/people/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": 14,
+    "first_name": "Ibrahim",
+    "last_name": "Abdullahi",
+    "middle_name": "Yusuf",
+    "date_of_birth": "1990-03-15",
+    "gender": "M",
+    "state_of_origin": "kano",
+    "lga": "Nassarawa",
+    "religion": "Islam",
+    "nationality": "Nigerian",
+    "phone_primary": "+2348031234567",
+    "email_personal": "ibrahim.personal@example.com",
+    "language": "Hausa"
+  }'
+
+# Create a person record with no linked account (e.g. a parent contact)
+curl -X POST https://api.gobarau.edu.ng/api/accounts/people/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": null,
+    "first_name": "Fatima",
+    "last_name": "Musa",
+    "phone_primary": "+2348059876543",
+    "nationality": "Nigerian",
+    "metadata": {"intake_year": 2025, "source": "parent_form"}
+  }'
+```
+
+### Response Example
+
+```json
+{
+  "id": 28,
+  "public_id": "d4e5f6a7-b8c9-0123-def4-567890abcdef",
+  "user": 14,
+  "full_name": "Ibrahim Yusuf Abdullahi",
+  "first_name": "Ibrahim",
+  "last_name": "Abdullahi",
+  "middle_name": "Yusuf",
+  "preferred_name": "",
+  "date_of_birth": "1990-03-15",
+  "gender": "M",
+  "state_of_origin": "kano",
+  "lga": "Nassarawa",
+  "religion": "Islam",
+  "nationality": "Nigerian",
+  "phone_primary": "+2348031234567",
+  "phone_secondary": "",
+  "email_personal": "ibrahim.personal@example.com",
+  "address": "",
+  "photo": null,
+  "national_id": "",
+  "external_ref": "",
+  "language": "Hausa",
+  "metadata": {},
+  "is_archived": false,
+  "archived_at": null,
+  "archived_by": null,
+  "created_at": "2025-08-15T09:15:00Z",
+  "updated_at": "2025-08-15T09:15:00Z",
+  "created_by": 1,
+  "updated_by": null
+}
+```
+
+---
+
+## Endpoint Summary
+
+| Resource | Base URL | Permission | Inherits |
+|----------|----------|-----------|----------|
+| Users | `/api/accounts/users/` | `IsAdminLevel` | Django `AbstractUser` |
+| People | `/api/accounts/people/` | `IsStaffOrAdmin` | `SoftDeleteModel` + `AuditMixin` |
+
+<Tip>
+  When creating a new staff or student record, the recommended workflow is: (1) `POST /api/accounts/users/` to create the login account, then (2) `POST /api/accounts/people/` with the returned `user` ID to attach the demographic profile. This keeps authentication and identity concerns cleanly separated.
+</Tip>

@@ -1,0 +1,124 @@
+---
+title: "Local Development Setup for Gobarau Academy Backend"
+sidebarTitle: "Local Setup"
+description: "Step-by-step guide to cloning, configuring, and running Gobarau Academy Backend locally with Python 3.12, virtual environment, and SQLite database."
+---
+
+This guide walks you through everything you need to get the Gobarau Academy Backend running on your local machine. By the end you will have a fully functional Django REST Framework development server connected to a local SQLite database, a superuser account for the admin panel, and all project dependencies installed in an isolated Python virtual environment.
+
+## Prerequisites
+
+Before you begin, make sure the following are available on your system:
+
+- **Python 3.12+** — the committed virtual environment was created with Python 3.12.1; using the same version avoids compatibility issues
+- **Git** — to clone the repository
+- **A Cloudinary account** — Gobarau Academy uses Cloudinary for all media uploads (logos, profile images, etc.); sign up for free at [cloudinary.com](https://cloudinary.com)
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/muhammadbugaje/gobarau_backend.git
+    cd gobarau_backend
+    ```
+  </Step>
+
+  <Step title="Create and activate a virtual environment">
+    A `venv/` folder is already committed to the repository (see note below), but creating a fresh virtual environment is strongly recommended for Linux and macOS users.
+
+    **Linux / macOS**
+    ```bash
+    python3.12 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+    **Windows (PowerShell)**
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\Activate.ps1
+    ```
+
+    **Windows (Command Prompt)**
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\activate.bat
+    ```
+
+    Once activated, your terminal prompt will be prefixed with `(.venv)`.
+  </Step>
+
+  <Step title="Install dependencies">
+    All required packages are tracked inside the committed `venv/` folder. Generate a `requirements.txt` from it, or install directly into your fresh environment by re-installing the packages that are present in `venv/Lib/site-packages/`. The core packages you need include Django 6.0.6, djangorestframework, djangorestframework-simplejwt, django-cors-headers, cloudinary, django-cloudinary-storage, and django-unfold.
+
+    If a `requirements.txt` has been added to the project root:
+    ```bash
+    pip install -r requirements.txt
+    ```
+  </Step>
+
+  <Step title="Run database migrations">
+    The project uses SQLite by default. Apply all migrations to create the local database:
+
+    ```bash
+    python manage.py migrate
+    ```
+
+    Django will create a `db.sqlite3` file in the project root automatically.
+  </Step>
+
+  <Step title="Create a superuser">
+    Create an admin account to access the django-unfold admin interface:
+
+    ```bash
+    python manage.py createsuperuser
+    ```
+
+    Follow the prompts to set a username, email address, and password.
+  </Step>
+
+  <Step title="Run the development server">
+    Start the local development server:
+
+    ```bash
+    python manage.py runserver
+    ```
+
+    By default, the server listens on `http://127.0.0.1:8000/`.
+  </Step>
+</Steps>
+
+## Verifying the Setup
+
+Once the server is running, confirm everything is working correctly with these two checks:
+
+**Admin panel** — Open [http://127.0.0.1:8000/admin/](http://127.0.0.1:8000/admin/) in your browser and log in with the superuser credentials you just created. You should see the django-unfold admin interface listing all registered models (School Settings, Academic Sessions, Terms, and more).
+
+**Sample API endpoint** — Visit [http://127.0.0.1:8000/api/administration/school-settings/](http://127.0.0.1:8000/api/administration/school-settings/) to confirm the REST API is responding. You should receive a JSON response (an empty list if no school settings have been configured yet).
+
+## Project Structure
+
+The top-level layout of the repository is:
+
+```
+gobarau_backend/
+├── apps/         # Domain application modules
+│   ├── accounts/
+│   ├── academics/
+│   ├── administration/
+│   ├── admissions/
+│   ├── communication/
+│   ├── content/
+│   ├── finance/
+│   ├── people/
+│   ├── services/
+│   └── welfare/
+├── core/         # Shared base models, permissions, choices
+├── gobarau/      # Django project config (settings, urls, wsgi, asgi)
+├── manage.py
+└── venv/         # Committed virtual environment (Windows)
+```
+
+<Note>
+  The committed `venv/` directory was created on **Windows** — its `pyvenv.cfg` points to `C:\Users\muham\AppData\Local\Programs\Python\Python312` and its `Scripts/` directory contains `.exe` and `.bat` files. Linux and macOS users cannot use this venv and must create their own with `python3.12 -m venv .venv` as shown in Step 2 above.
+</Note>

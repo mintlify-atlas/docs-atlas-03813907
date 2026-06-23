@@ -1,0 +1,556 @@
+---
+title: "Welfare API — Health, Counselling, Discipline, and Interventions"
+sidebarTitle: "Welfare"
+description: "REST endpoints for student welfare management: health profiles, clinic visits, medications, counselling sessions, disciplinary records, merit tracking, and intervention case management."
+---
+
+The Welfare module provides a comprehensive, multi-domain view of student well-being at Gobarau Academy. It spans four interconnected areas: **Health** (medical profiles, clinic visits, and prescribed medications), **Counselling** (one-to-one sessions between students and school counsellors), **Discipline** (incident records and merit/demerit point tracking), and **Interventions** (structured case management for students requiring multi-domain support, alongside extended absence logging and periodic welfare reports). All welfare models inherit from `SoftDeleteModel` and `AuditMixin`, meaning records are never hard-deleted and every access action is audited. All endpoints are prefixed with `/api/welfare/` and follow standard DRF router conventions.
+
+<Warning>
+  Welfare data is highly sensitive and personally identifiable. Access to health and counselling endpoints is restricted to users with the **nurse** or **counsellor** role respectively. Disciplinary and intervention endpoints require **admin-level** access. Always ensure the calling user's token carries the appropriate role permissions before making requests.
+</Warning>
+
+---
+
+## Health
+
+### Health Profiles
+
+<ParamField path="GET /api/welfare/health-profiles/" type="endpoint">
+  List all student health profiles.
+</ParamField>
+
+<ParamField path="POST /api/welfare/health-profiles/" type="endpoint">
+  Create a health profile for a student.
+</ParamField>
+
+A **HealthProfile** holds a student's core medical information: blood group, genotype, known allergies, chronic conditions, and emergency contact details. Each student has at most one health profile (enforced by a `OneToOneField`). Access is restricted to the school nurse role.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key (one-to-one) — ID of the `StudentProfile`. Each student can have only one health profile.
+</ParamField>
+
+<ParamField body="blood_group" type="string">
+  Student's blood group, e.g. `"O+"`. Optional.
+</ParamField>
+
+<ParamField body="genotype" type="string">
+  Student's genotype, e.g. `"AA"`. Optional.
+</ParamField>
+
+<ParamField body="allergies" type="string">
+  Free-text description of known allergies. Optional.
+</ParamField>
+
+<ParamField body="chronic_conditions" type="string">
+  Free-text description of any chronic medical conditions. Optional.
+</ParamField>
+
+<ParamField body="emergency_contact_name" type="string">
+  Full name of the emergency contact person. Optional.
+</ParamField>
+
+<ParamField body="emergency_contact_phone" type="string">
+  Phone number for the emergency contact. Optional.
+</ParamField>
+
+#### Example — Create a Health Profile
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/welfare/health-profiles/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 42,
+    "blood_group": "B+",
+    "genotype": "AS",
+    "allergies": "Penicillin",
+    "chronic_conditions": "",
+    "emergency_contact_name": "Aisha Musa",
+    "emergency_contact_phone": "+2348031234567"
+  }'
+```
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the health profile.
+</ResponseField>
+
+<ResponseField name="student" type="integer">
+  ID of the linked `StudentProfile`.
+</ResponseField>
+
+<ResponseField name="blood_group" type="string">
+  Student's blood group.
+</ResponseField>
+
+<ResponseField name="genotype" type="string">
+  Student's genotype.
+</ResponseField>
+
+<ResponseField name="allergies" type="string">
+  Known allergies.
+</ResponseField>
+
+<ResponseField name="chronic_conditions" type="string">
+  Known chronic conditions.
+</ResponseField>
+
+<ResponseField name="emergency_contact_name" type="string">
+  Name of emergency contact.
+</ResponseField>
+
+<ResponseField name="emergency_contact_phone" type="string">
+  Phone number of emergency contact.
+</ResponseField>
+
+---
+
+### Clinic Visits
+
+<ParamField path="GET /api/welfare/clinic-visits/" type="endpoint">
+  List all clinic visit records.
+</ParamField>
+
+<ParamField path="POST /api/welfare/clinic-visits/" type="endpoint">
+  Record a new clinic visit for a student.
+</ParamField>
+
+A **ClinicVisit** records each time a student attends the school clinic. It captures the presenting complaint, diagnosis, treatment administered, and whether the student was referred to an external facility. Clinic visit records are fully audited.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="visit_date" type="string" required>
+  Date of the clinic visit in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="complaint" type="string" required>
+  The student's presenting complaint or reason for the visit.
+</ParamField>
+
+<ParamField body="diagnosis" type="string">
+  Nurse or doctor's diagnosis. Optional.
+</ParamField>
+
+<ParamField body="treatment" type="string">
+  Treatment or care administered during the visit. Optional.
+</ParamField>
+
+<ParamField body="referred_out" type="boolean">
+  Whether the student was referred to an external clinic or hospital. Defaults to `false`.
+</ParamField>
+
+---
+
+### Medications
+
+<ParamField path="GET /api/welfare/medications/" type="endpoint">
+  List all medication records.
+</ParamField>
+
+<ParamField path="POST /api/welfare/medications/" type="endpoint">
+  Add a medication prescribed during a clinic visit.
+</ParamField>
+
+A **Medication** entry records a drug prescribed to a student during a specific clinic visit. Multiple medications can be linked to a single visit.
+
+#### Request Fields
+
+<ParamField body="clinic_visit" type="integer" required>
+  Foreign key — ID of the `ClinicVisit` this medication belongs to.
+</ParamField>
+
+<ParamField body="drug_name" type="string" required>
+  Name of the prescribed drug, e.g. `"Paracetamol"`.
+</ParamField>
+
+<ParamField body="dosage" type="string" required>
+  Dose amount and unit, e.g. `"500mg"`.
+</ParamField>
+
+<ParamField body="frequency" type="string" required>
+  How often the medication should be taken, e.g. `"Twice daily"`.
+</ParamField>
+
+<ParamField body="duration" type="string" required>
+  How long the course lasts, e.g. `"5 days"`.
+</ParamField>
+
+---
+
+## Counselling
+
+### Counselling Sessions
+
+<ParamField path="GET /api/welfare/counselling-sessions/" type="endpoint">
+  List all counselling session records.
+</ParamField>
+
+<ParamField path="POST /api/welfare/counselling-sessions/" type="endpoint">
+  Record a new counselling session.
+</ParamField>
+
+A **CounsellingSession** documents a structured meeting between a student and a school counsellor, capturing the presenting issue, session notes, and any scheduled follow-up date. These records are soft-deleted and fully audited. Access is restricted to users with the `counsellor` role.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="counsellor" type="integer">
+  Foreign key — ID of the `TeacherProfile` acting as counsellor. Nullable.
+</ParamField>
+
+<ParamField body="session_date" type="string" required>
+  Date the session took place in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="presenting_issue" type="string" required>
+  Description of the issue or concern the student presented with.
+</ParamField>
+
+<ParamField body="notes" type="string">
+  Counsellor's session notes. Optional.
+</ParamField>
+
+<ParamField body="follow_up_date" type="string">
+  Scheduled follow-up date in `YYYY-MM-DD` format. Nullable.
+</ParamField>
+
+<Note>
+  Counselling session notes are strictly confidential. Only authenticated users with the **counsellor** or **principal** role should have read access to this endpoint. Never expose session notes in parent-facing or student-facing API consumers.
+</Note>
+
+---
+
+## Discipline
+
+### Disciplinary Records
+
+<ParamField path="GET /api/welfare/disciplinary-records/" type="endpoint">
+  List all disciplinary records.
+</ParamField>
+
+<ParamField path="POST /api/welfare/disciplinary-records/" type="endpoint">
+  Create a disciplinary record for a student incident.
+</ParamField>
+
+A **DisciplinaryRecord** documents a behavioural incident involving a student, including the type of incident, a description, any action taken by the school, and the current resolution status. Records are ordered by most recent incident first.
+
+#### Disciplinary Status Values
+
+| Value | Description |
+|---|---|
+| `pending` | Incident recorded, no action taken yet (default) |
+| `resolved` | Incident has been fully resolved |
+| `escalated` | Incident has been escalated to senior management |
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="incident_date" type="string" required>
+  Date of the incident in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="incident_type" type="string" required>
+  Short classification of the incident, e.g. `"Fighting"`, `"Insubordination"`.
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  Full narrative description of what occurred.
+</ParamField>
+
+<ParamField body="action_taken" type="string">
+  Description of any disciplinary action applied. Optional.
+</ParamField>
+
+<ParamField body="status" type="string">
+  Current status. One of `pending`, `resolved`, or `escalated`. Defaults to `pending`.
+</ParamField>
+
+#### Example — Create a Disciplinary Record
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/welfare/disciplinary-records/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 42,
+    "incident_date": "2025-02-14",
+    "incident_type": "Bullying",
+    "description": "Student was found intimidating a junior student during break time.",
+    "action_taken": "Verbal warning issued, parents notified.",
+    "status": "pending"
+  }'
+```
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the disciplinary record.
+</ResponseField>
+
+<ResponseField name="student" type="integer">
+  ID of the `StudentProfile` involved.
+</ResponseField>
+
+<ResponseField name="incident_type" type="string">
+  Type classification of the incident.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current resolution status: `pending`, `resolved`, or `escalated`.
+</ResponseField>
+
+---
+
+### Merit Deductions
+
+<ParamField path="GET /api/welfare/merit-deductions/" type="endpoint">
+  List all merit and demerit point entries.
+</ParamField>
+
+<ParamField path="POST /api/welfare/merit-deductions/" type="endpoint">
+  Record a merit addition or deduction for a student.
+</ParamField>
+
+A **MeritDeduction** record adjusts a student's running merit points balance. It can represent either an addition (reward) or a deduction (penalty), with a reason and the staff member who recorded it.
+
+#### Merit Direction Values
+
+| Value | Description |
+|---|---|
+| `add` | Points are being added (reward) (default) |
+| `deduct` | Points are being removed (penalty) |
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="points" type="integer" required>
+  Number of merit points to add or deduct. Must be a positive integer. Defaults to `1`.
+</ParamField>
+
+<ParamField body="direction" type="string" required>
+  Whether points are being added or deducted. One of `add` or `deduct`.
+</ParamField>
+
+<ParamField body="reason" type="string" required>
+  Brief reason for the merit change, e.g. `"Outstanding conduct during assembly"`.
+</ParamField>
+
+<ParamField body="recorded_by" type="integer">
+  Foreign key — ID of the `User` who recorded this entry. Nullable.
+</ParamField>
+
+---
+
+## Interventions
+
+### Intervention Cases
+
+<ParamField path="GET /api/welfare/intervention-cases/" type="endpoint">
+  List all intervention cases.
+</ParamField>
+
+<ParamField path="POST /api/welfare/intervention-cases/" type="endpoint">
+  Open a new intervention case for a student.
+</ParamField>
+
+An **InterventionCase** is a structured, trackable case opened when a student requires sustained support across one or more domains. Cases transition through `open → on_hold → closed` as progress is made.
+
+#### Intervention Type Values
+
+| Value | Description |
+|---|---|
+| `academic` | Academic underperformance or learning difficulties |
+| `attendance` | Persistent absenteeism or lateness |
+| `behavioural` | Ongoing behavioural concerns |
+| `welfare` | General welfare or safeguarding issues |
+| `health` | Chronic health conditions requiring monitoring |
+| `tahfeez` | Difficulties or concerns in Qur'an memorization progress |
+
+#### Intervention Status Values
+
+| Value | Description |
+|---|---|
+| `open` | Case is actively being managed (default) |
+| `on_hold` | Case is paused, awaiting further information |
+| `closed` | Case has been resolved and closed |
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="case_type" type="string" required>
+  Type or domain of the intervention. Recommended values: `academic`, `attendance`, `behavioural`, `welfare`, `health`, `tahfeez`.
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  Full description of the concern and context for this case.
+</ParamField>
+
+<ParamField body="closed_at" type="string">
+  Date the case was closed in `YYYY-MM-DD` format. Nullable; set when status moves to `closed`.
+</ParamField>
+
+<ParamField body="status" type="string">
+  Current case status. One of `open`, `on_hold`, or `closed`. Defaults to `open`.
+</ParamField>
+
+#### Example — Open an Intervention Case
+
+```bash
+curl -X POST https://api.gobarau.edu.ng/api/welfare/intervention-cases/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 88,
+    "case_type": "attendance",
+    "description": "Student has been absent for 12 out of the last 20 school days without adequate explanation. Parents have been unresponsive.",
+    "status": "open"
+  }'
+```
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the intervention case.
+</ResponseField>
+
+<ResponseField name="student" type="integer">
+  ID of the `StudentProfile`.
+</ResponseField>
+
+<ResponseField name="case_type" type="string">
+  Type/domain of the intervention.
+</ResponseField>
+
+<ResponseField name="opened_at" type="string">
+  Date the case was opened (auto-set on creation).
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current case status: `open`, `on_hold`, or `closed`.
+</ResponseField>
+
+---
+
+### Intervention Notes
+
+<ParamField path="GET /api/welfare/intervention-notes/" type="endpoint">
+  List all notes attached to intervention cases.
+</ParamField>
+
+<ParamField path="POST /api/welfare/intervention-notes/" type="endpoint">
+  Add a progress note to an intervention case.
+</ParamField>
+
+An **InterventionNote** is a timestamped progress update or observation added to an open intervention case by a staff member. Multiple notes can be attached to a single case.
+
+#### Request Fields
+
+<ParamField body="case" type="integer" required>
+  Foreign key — ID of the `InterventionCase` this note belongs to.
+</ParamField>
+
+<ParamField body="note" type="string" required>
+  The full text of the progress note or update.
+</ParamField>
+
+<ParamField body="added_by" type="integer">
+  Foreign key — ID of the `User` who wrote the note. Nullable.
+</ParamField>
+
+<Tip>
+  Use intervention notes to maintain a running audit trail for each case. All notes are timestamped automatically via `added_at` and ordered from most recent to oldest.
+</Tip>
+
+---
+
+### Absences
+
+<ParamField path="GET /api/welfare/absences/" type="endpoint">
+  List all extended absence records.
+</ParamField>
+
+<ParamField path="POST /api/welfare/absences/" type="endpoint">
+  Log an extended absence period for a student.
+</ParamField>
+
+An **Absence** record documents a multi-day absence period for a student, distinct from single-day attendance records. It captures the date range, the reason, whether the absence is officially excused, and whether the student's parent or guardian has been notified.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="from_date" type="string" required>
+  First day of the absence in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="to_date" type="string" required>
+  Last day of the absence in `YYYY-MM-DD` format.
+</ParamField>
+
+<ParamField body="reason" type="string" required>
+  Reason provided for the absence.
+</ParamField>
+
+<ParamField body="is_excused" type="boolean">
+  Whether the absence has been officially excused by the school. Defaults to `false`.
+</ParamField>
+
+<ParamField body="parent_notified" type="boolean">
+  Whether the student's parent or guardian has been informed. Defaults to `false`.
+</ParamField>
+
+---
+
+### Welfare Reports
+
+<ParamField path="GET /api/welfare/welfare-reports/" type="endpoint">
+  List all welfare reports.
+</ParamField>
+
+<ParamField path="POST /api/welfare/welfare-reports/" type="endpoint">
+  Create a periodic welfare summary report for a student.
+</ParamField>
+
+A **WelfareReport** is a termly summary of a student's overall welfare level, bringing together health, behavioural, and counselling observations into a single consolidated assessment with recommendations for the upcoming term.
+
+#### Request Fields
+
+<ParamField body="student" type="integer" required>
+  Foreign key — ID of the `StudentProfile`.
+</ParamField>
+
+<ParamField body="term" type="integer" required>
+  Foreign key — ID of the `Term` this report covers.
+</ParamField>
+
+<ParamField body="overall_welfare_level" type="string" required>
+  A descriptive welfare level label, e.g. `"Good"`, `"Needs Monitoring"`, `"At Risk"`.
+</ParamField>
+
+<ParamField body="recommendations" type="string">
+  Recommendations for supporting the student in the next term. Optional.
+</ParamField>
+
+<ParamField body="prepared_by" type="integer">
+  Foreign key — ID of the `User` who prepared this report. Nullable.
+</ParamField>
+
+<Note>
+  Welfare reports should only be prepared by authorised welfare staff (nurse, counsellor, or admin). When `prepared_by` is set, it creates an auditable record of who authored the report. Reports are soft-deleted — a `DELETE` request marks them as inactive rather than permanently removing them from the database.
+</Note>

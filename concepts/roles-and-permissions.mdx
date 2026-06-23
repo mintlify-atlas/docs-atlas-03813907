@@ -1,0 +1,189 @@
+---
+title: "User Roles and Permission System in Gobarau Backend"
+sidebarTitle: "Roles & Permissions"
+description: "Gobarau Backend enforces role-based access with ten predefined roles and four custom DRF permission classes covering admin, staff, teacher, and parent access levels."
+---
+
+Gobarau Backend implements a role-based access control (RBAC) system built directly on top of Django REST Framework's permission layer. Every `User` record carries a `role` field (a `CharField` with choices from `RoleChoices`) that identifies what that user is permitted to do across the system. Rather than relying on Django's group-based permissions or per-object `Permission` records, the system uses four custom DRF `BasePermission` subclasses that inspect `request.user.role` at the view level. This keeps permission logic explicit, centralised in `core/permissions.py`, and easy to audit.
+
+## Roles
+
+All valid roles are declared in `core/choices.py` as a `TextChoices` enumeration. The string values stored in the database are listed below along with their display names and typical system use.
+
+| Role value | Display name | Typical use |
+|-----------|--------------|-------------|
+| `super_admin` | Super Admin | Full unrestricted system access; can manage all records, users, and settings |
+| `principal` | Principal | School leadership; broad read/write access across academic and administrative data |
+| `vice_principal` | Vice Principal | School leadership; same access tier as Principal |
+| `bursar` | Bursar | Finance management; access to fee structures, invoices, and payment records |
+| `teacher` | Teacher | Academic and attendance management for assigned classes and subjects |
+| `student` | Student | View their own academic records, timetable, attendance, and scores |
+| `parent` | Parent | View data belonging to their registered wards only |
+| `alumni` | Alumni | Access alumni features, wall of fame, and mentorship listings |
+| `nurse` | School Nurse | Create and manage health records and welfare entries |
+| `counsellor` | Counsellor | Record and manage counselling sessions and student welfare interventions |
+
+The `role` field is declared on `accounts.User` with a default of `student`, meaning every newly created user starts with the least-privileged role:
+
+```python
+# apps/accounts/models.py
+class User(AbstractUser):
+    """Custom user model with role and wing assignment."""
+    role = models.CharField(
+        max_length=20,
+        choices=RoleChoices.choices,
+        default=RoleChoices.STUDENT,
+        db_index=True,
+    )
+    wing = models.CharField(
+        max_length=20,
+        choices=WingChoices.choices,
+        default=WingChoices.REGULAR,
+        db_index=True,
+    )
+    is_verified = models.BooleanField(default=False)
+    preferences = models.JSONField(default=dict, blank=True)
+```
+
+## Wing Assignment
+
+In addition to their role, every user is assigned a **wing** that reflects which educational programme they belong to. Wing assignment is stored on `User.wing` and is also represented as a FK on `StudentProfile`.
+
+| Wing value | Display name | Description |
+|-----------|--------------|-------------|
+| `regular` | Regular | Standard national curriculum programme |
+| `islamiyyah` | Islamiyyah | Integrated Islamic studies curriculum |
+| `tahfeez` | Tahfeez | Quran memorisation (Hifz) programme |
+
+Wing is declared alongside role in `core/choices.py`:
+
+```python
+# core/choices.py
+class WingChoices(models.TextChoices):
+    REGULAR = "regular", "Regular"
+    ISLAMIYYAH = "islamiyyah", "Islamiyyah"
+    TAHFEEZ = "tahfeez", "Tahfeez"
+```
+
+Wing controls which class records a student can be enrolled in, which timetable entries are visible to them, and whether Tahfeez-specific features (Juz progress, recitation sessions) are active on their profile.
+
+## Permission Classes
+
+All four permission classes live in `core/permissions.py` and extend DRF's `BasePermission`. They implement both `has_permission` (view-level) and, where relevant, `has_object_permission` (object-level) checks.
+
+<Note>
+  All endpoints require `IsAuthenticated` in addition to whichever role-based permission class is applied. The custom permission classes also guard against unauthenticated requests internally, but setting `IsAuthenticated` explicitly in the ViewSet's `permission_classes` is the recommended pattern.
+</Note>
+
+### `IsAdminLevel`
+
+Grants access exclusively to the three leadership roles: `super_admin`, `principal`, and `vice_principal`. Use this on ViewSets that manage users, roles, system configuration, or any data that only school leadership should touch.
+
+```python
+class IsAdminLevel(BasePermission):
+    """Allows super_admin, principal, vice_principal only."""
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return request.user.role in [
+            RoleChoices.SUPER_ADMIN,
+            RoleChoices.PRINCIPAL,
+            RoleChoices.VICE_PRINCIPAL,
+        ]
+```
+
+### `IsStaffOrAdmin`
+
+Extends `IsAdminLevel` to also permit `bursar` and `teacher` roles. Use this on ViewSets where operational staff — not just leadership — need read or write access, such as student lists, class schedules, and finance summaries.
+
+```python
+class IsStaffOrAdmin(BasePermission):
+    """Allows admin-level roles and teaching staff."""
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return request.user.role in [
+            RoleChoices.SUPER_ADMIN,
+            RoleChoices.PRINCIPAL,
+            RoleChoices.VICE_PRINCIPAL,
+            RoleChoices.BURSAR,
+            RoleChoices.TEACHER,
+        ]
+```
+
+### `IsOwnStudent`
+
+Intended for ViewSets that expose student-centric data (attendance, scores, assignments). At the view level it allows teachers and all admin-level roles. At the object level it always returns `True` as a base — individual app ViewSets are expected to supplement with class-assignment logic to ensure teachers only see students in their own classes.
+
+```python
+class IsOwnStudent(BasePermission):
+    """Teachers may access students in their assigned classes."""
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.role in [
+            RoleChoices.SUPER_ADMIN,
+            RoleChoices.PRINCIPAL,
+            RoleChoices.VICE_PRINCIPAL,
+        ]:
+            return True
+        return request.user.role == RoleChoices.TEACHER
+
+    def has_object_permission(self, request, view, obj):
+        if request.user.role in [
+            RoleChoices.SUPER_ADMIN,
+            RoleChoices.PRINCIPAL,
+            RoleChoices.VICE_PRINCIPAL,
+        ]:
+            return True
+        # App-level views should supplement with class-assignment logic.
+        return True
+```
+
+### `IsOwnWard`
+
+Controls parent access to student data. At the view level it allows the `parent` role and all admin-level roles. At the object level admin roles are always permitted — app-level ViewSets should add ward-assignment filtering to restrict parents to their own children's records.
+
+```python
+class IsOwnWard(BasePermission):
+    """Parents may access only their own child's data."""
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.role in [
+            RoleChoices.SUPER_ADMIN,
+            RoleChoices.PRINCIPAL,
+            RoleChoices.VICE_PRINCIPAL,
+        ]:
+            return True
+        return request.user.role == RoleChoices.PARENT
+
+    def has_object_permission(self, request, view, obj):
+        if request.user.role in [
+            RoleChoices.SUPER_ADMIN,
+            RoleChoices.PRINCIPAL,
+            RoleChoices.VICE_PRINCIPAL,
+        ]:
+            return True
+        # App-level views should supplement with ward-assignment logic.
+        return True
+```
+
+## How Permissions Are Applied
+
+Permission classes are set on each ViewSet via the `permission_classes` attribute. The table below shows representative examples from across the application:
+
+| ViewSet / Endpoint area | Permission class | Rationale |
+|------------------------|-----------------|-----------|
+| `UserViewSet` (accounts) | `IsAdminLevel` | Only leadership can create, modify, or deactivate user accounts |
+| `PersonViewSet` (accounts) | `IsStaffOrAdmin` | All staff need to look up identity records |
+| `StudentProfileViewSet` (people) | `IsStaffOrAdmin` | Teachers and admin manage student profiles |
+| `AttendanceRecordViewSet` (academics) | `IsOwnStudent` | Teachers record attendance for their own class |
+| `ScoreViewSet` (academics) | `IsOwnStudent` | Teachers enter scores; admins have full access |
+| `WardRelationshipViewSet` (people) | `IsOwnWard` | Parents view their linked wards; admin can manage all links |
+| `FinanceViewSet` (finance) | `IsStaffOrAdmin` | Bursars and admin manage fee and payment records |
+| `HealthRecordViewSet` (welfare) | `IsStaffOrAdmin` | Nurses and admin manage health entries |
+
+<Warning>
+  The `student` and `alumni` roles are intentionally excluded from all four core permission classes. Endpoints that expose read-only self-service data for students or alumni should use their own dedicated permission logic or DRF's built-in `IsAuthenticated` combined with queryset-level filtering on `request.user`.
+</Warning>

@@ -1,0 +1,252 @@
+---
+title: "Configure Gobarau Academy Backend Settings"
+sidebarTitle: "Configuration"
+description: "Reference for all configurable Django settings in Gobarau Academy Backend: database, Cloudinary storage, REST framework, JWT authentication, and school-wide options."
+---
+
+This page is a complete reference for configuring Gobarau Academy Backend. All settings live in `gobarau/settings.py`, which is the single settings module loaded by `manage.py` via the `DJANGO_SETTINGS_MODULE = 'gobarau.settings'` environment variable. The sections below document each configurable area — from core Django knobs to third-party integrations like Cloudinary, SimpleJWT, and django-cors-headers — along with recommended production values.
+
+<Tip>
+  Consider using [python-decouple](https://github.com/HBNetwork/python-decouple) or [django-environ](https://django-environ.readthedocs.io/) to manage environment-specific values. Both libraries let you read settings from a `.env` file during development and from real environment variables in production, keeping secrets out of source control entirely.
+
+  ```bash
+  pip install python-decouple
+  # or
+  pip install django-environ
+  ```
+</Tip>
+
+## Django Settings
+
+The table below documents the core Django settings present in `gobarau/settings.py`.
+
+| Setting | Current Value | Notes |
+|---|---|---|
+| `SECRET_KEY` | `'django-insecure-(o4n%...)'` | Must be replaced before production; read from env var |
+| `DEBUG` | `True` | Set to `False` in production |
+| `ALLOWED_HOSTS` | `[]` | Add your domain(s) for production |
+| `AUTH_USER_MODEL` | `"accounts.User"` | Custom user model in the `apps.accounts` app |
+| `ROOT_URLCONF` | `"gobarau.urls"` | Root URL configuration |
+| `WSGI_APPLICATION` | `"gobarau.wsgi.application"` | WSGI entrypoint for production servers |
+| `LANGUAGE_CODE` | `"en-us"` | Default locale |
+| `TIME_ZONE` | `"UTC"` | Server timezone |
+| `USE_TZ` | `True` | Timezone-aware datetimes |
+| `STATIC_URL` | `"static/"` | URL prefix for static files |
+
+### Key settings explained
+
+**`AUTH_USER_MODEL`**
+
+Gobarau Academy uses a custom user model instead of Django's built-in `auth.User`. All authentication, permission checks, and foreign keys to users reference `accounts.User`:
+
+```python
+AUTH_USER_MODEL = "accounts.User"
+```
+
+**`ROOT_URLCONF`**
+
+All URL routing starts from `gobarau/urls.py`:
+
+```python
+ROOT_URLCONF = 'gobarau.urls'
+```
+
+## Installed Apps
+
+`INSTALLED_APPS` is organised into four groups in `settings.py`:
+
+### Admin UI (django-unfold)
+
+These must appear **before** `django.contrib.admin` so that unfold can override admin templates:
+
+```python
+'unfold',
+'unfold.contrib.filters',
+'unfold.contrib.forms',
+'unfold.contrib.import_export',
+'import_export',
+```
+
+### Django Built-ins
+
+```python
+'django.contrib.admin',
+'django.contrib.auth',
+'django.contrib.contenttypes',
+'django.contrib.sessions',
+'django.contrib.messages',
+'django.contrib.staticfiles',
+```
+
+### Third-Party Packages
+
+```python
+'rest_framework',           # Django REST Framework 3.17.1
+'rest_framework_simplejwt', # JWT auth 5.5.1
+'corsheaders',              # CORS headers 4.9.0
+'cloudinary',               # Cloudinary SDK 1.44.2
+'cloudinary_storage',       # Cloudinary storage backend 0.3.0
+```
+
+### Project Apps
+
+```python
+'core',                  # Shared base models, mixins, choices
+'apps.accounts',         # Custom user model and authentication
+'apps.administration',   # School settings, sessions, terms, wings
+'apps.people',           # Staff and student profile records
+'apps.academics',        # Classes, subjects, timetables, results
+'apps.admissions',       # Application and enrolment workflow
+'apps.finance',          # Fee structures and payment tracking
+'apps.communication',    # Messaging and notifications
+'apps.content',          # School content and announcements
+'apps.welfare',          # Student welfare, health, and counselling
+'apps.services',         # Library, transport, and support services
+```
+
+## Database Configuration
+
+### Default — SQLite (development)
+
+The project ships with SQLite, which requires no additional setup:
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+```
+
+### PostgreSQL (production)
+
+Replace the SQLite block with a PostgreSQL configuration for production deployments. Install `psycopg2-binary` first:
+
+```bash
+pip install psycopg2-binary
+```
+
+```python
+import os
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ['DB_NAME'],
+        'USER': os.environ['DB_USER'],
+        'PASSWORD': os.environ['DB_PASSWORD'],
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
+    }
+}
+```
+
+## Cloudinary Configuration
+
+All user-uploaded media (school logos, profile images, documents) is served through Cloudinary. Add the following block to `settings.py` and supply your credentials via environment variables:
+
+```python
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': 'your-cloud-name',
+    'API_KEY': 'your-api-key',
+    'API_SECRET': 'your-api-secret',
+}
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+```
+
+With this configuration, any `ImageField` or `FileField` (such as `SchoolSettings.logo`) will automatically upload to and serve files from Cloudinary rather than the local filesystem.
+
+<Info>
+  `cloudinary` (SDK 1.44.2) and `cloudinary_storage` (0.3.0) are both already present in `INSTALLED_APPS`. You only need to add `CLOUDINARY_STORAGE` and `DEFAULT_FILE_STORAGE` to complete the setup.
+</Info>
+
+## REST Framework Configuration
+
+`rest_framework` is installed but no `REST_FRAMEWORK` dictionary is defined in the current `settings.py`. Add the following recommended configuration block:
+
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+}
+```
+
+- **`JWTAuthentication`** — uses the SimpleJWT tokens issued by the accounts app
+- **`IsAuthenticated`** — all endpoints require a valid JWT by default; override per-view as needed
+- **`PageNumberPagination`** — returns paginated list responses with a `page` query parameter
+
+## JWT Configuration
+
+`rest_framework_simplejwt` (5.5.1) is installed. Add a `SIMPLE_JWT` block to control token lifetimes and algorithm:
+
+```python
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+```
+
+| Key | Recommended Value | Description |
+|---|---|---|
+| `ACCESS_TOKEN_LIFETIME` | `timedelta(minutes=60)` | How long an access token is valid |
+| `REFRESH_TOKEN_LIFETIME` | `timedelta(days=7)` | How long a refresh token is valid |
+| `ROTATE_REFRESH_TOKENS` | `True` | Issue a new refresh token on every refresh |
+| `BLACKLIST_AFTER_ROTATION` | `True` | Invalidate old refresh tokens after rotation |
+| `ALGORITHM` | `'HS256'` | Signing algorithm |
+| `AUTH_HEADER_TYPES` | `('Bearer',)` | Expected `Authorization` header prefix |
+
+## CORS Configuration
+
+`corsheaders` (4.9.0) is listed in `INSTALLED_APPS` but the `CorsMiddleware` has not yet been added to `MIDDLEWARE`. Complete the setup by editing the middleware list and adding an allowed-origins setting:
+
+```python
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',   # ← must be before CommonMiddleware
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# Production — list specific origins
+CORS_ALLOWED_ORIGINS = [
+    "https://yourfrontend.com",
+]
+
+# Development only — allow everything
+# CORS_ALLOW_ALL_ORIGINS = True
+```
+
+## School Settings Model
+
+School-wide configuration is managed through the `SchoolSettings` singleton model in `apps/administration/models.py`. Because it enforces a single-row constraint (attempting to save a second instance raises a `ValidationError`), it acts as a global configuration store that administrators edit through the django-unfold admin panel rather than through environment variables.
+
+The following fields are available:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | `CharField(200)` | Official school name |
+| `motto` | `CharField(200)` | School motto |
+| `logo` | `ImageField` | School logo (uploaded to Cloudinary under `school/`) |
+| `address` | `TextField` | Physical address |
+| `email` | `EmailField` | Official school email |
+| `phone` | `CharField(20)` | Contact phone number |
+| `academic_year` | `CharField(20)` | Current academic year label (e.g. `2025/2026`) |
+
+Access the School Settings record via the admin at `/admin/administration/schoolsettings/`, or through the REST API at `/api/administration/school-settings/`.

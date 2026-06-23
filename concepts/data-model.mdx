@@ -1,0 +1,311 @@
+---
+title: "Data Model Overview for Gobarau Academy Backend"
+sidebarTitle: "Data Model"
+description: "A conceptual overview of the Gobarau Backend data model: how Person, User, StudentProfile, and domain records relate across the ten application modules."
+---
+
+Gobarau Backend uses a layered identity model that cleanly separates authentication concerns from biographical data and role-specific records. At the base sits a `User` row that handles login credentials and role assignment. Linked one-to-one to that is a `Person` row that holds every human-facing detail about the individual — name, date of birth, contact information, and photo. On top of `Person` sit role-specific profile models (`StudentProfile`, `TeacherProfile`, `ParentProfile`, `AlumniProfile`) in the `people` app, each adding the fields relevant to that role without polluting the shared identity tables. Domain records — attendance, scores, health entries, payments — then hang off these profile models, keeping each app's data scoped to the role it serves.
+
+<Tip>
+  All models that extend `BaseModel` (or any of its subclasses) expose a `public_id` UUID field as the external-facing identifier. Always use `public_id` when referencing records in API requests and responses — never rely on the internal integer `id`.
+</Tip>
+
+## Identity Layer
+
+The identity layer consists of exactly two tables, both in the `accounts` app.
+
+### `User` — Authentication Record
+
+`User` extends Django's `AbstractUser` and is set as the project's `AUTH_USER_MODEL`. It stores credentials (username, password, email) and carries two additional classification fields: `role` and `wing`.
+
+```python
+# apps/accounts/models.py
+class User(AbstractUser):
+    """Custom user model with role and wing assignment."""
+    role = models.CharField(
+        max_length=20,
+        choices=RoleChoices.choices,
+        default=RoleChoices.STUDENT,
+        db_index=True,
+    )
+    wing = models.CharField(
+        max_length=20,
+        choices=WingChoices.choices,
+        default=WingChoices.REGULAR,
+        db_index=True,
+    )
+    is_verified = models.BooleanField(default=False)
+    preferences = models.JSONField(default=dict, blank=True)
+```
+
+| Field | Description |
+|-------|-------------|
+| `role` | One of ten `RoleChoices` values; gates permission class access |
+| `wing` | One of three `WingChoices` values; scopes academic programme |
+| `is_verified` | Boolean flag set after identity or email verification |
+| `preferences` | Free-form JSON for per-user UI and notification preferences |
+
+### `Person` — Rich Identity Profile
+
+`Person` is the canonical biographical record for every human in the system — students, teachers, parents, alumni, and staff alike. It is linked one-to-one to `User` via the `user` FK, but that link is nullable: a `Person` can exist before a `User` account is created (e.g. for a parent who has not yet been invited to log in).
+
+`Person` inherits from both `SoftDeleteModel` and `AuditMixin`, meaning every person record is soft-deletable and carries `created_by` / `updated_by` audit fields.
+
+```python
+# apps/accounts/models.py
+class Person(SoftDeleteModel, AuditMixin):
+    """Single identity record for every human in the system."""
+    user = models.OneToOneField(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="person",
+    )
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    middle_name = models.CharField(max_length=100, blank=True, default="")
+    preferred_name = models.CharField(max_length=100, blank=True, default="")
+    date_of_birth = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=1, choices=GenderChoices.choices, ...)
+    state_of_origin = models.CharField(max_length=50, choices=NIGERIAN_STATES, ...)
+    lga = models.CharField(max_length=100, blank=True, default="")
+    religion = models.CharField(max_length=50, blank=True, default="")
+    nationality = models.CharField(max_length=50, default="Nigerian")
+    phone_primary = models.CharField(max_length=20, blank=True, default="")
+    phone_secondary = models.CharField(max_length=20, blank=True, default="")
+    email_personal = models.EmailField(blank=True, default="")
+    address = models.TextField(blank=True, default="")
+    photo = models.ImageField(upload_to="people/photos/", blank=True, null=True)
+    national_id = models.CharField(max_length=50, blank=True, default="")
+    external_ref = models.CharField(max_length=100, blank=True, default="")
+    language = models.CharField(max_length=50, default="English")
+    metadata = models.JSONField(default=dict, blank=True)
+```
+
+The `full_name` property joins `first_name`, `middle_name`, and `last_name`, omitting blank parts automatically.
+
+## Role Profile Layer
+
+Once a `Person` record exists, a role-specific profile can be created for them in the `people` app. Each profile model links back to `Person` via a one-to-one `person` FK and adds the fields relevant to that role.
+
+### `StudentProfile`
+
+Holds academic identity and current class placement.
+
+```python
+class StudentProfile(SoftDeleteModel, AuditMixin):
+    person = models.OneToOneField('accounts.Person', ...)
+    admission_number = models.CharField(max_length=20, unique=True)
+    enrollment_status = models.CharField(choices=EnrollmentStatusChoices.choices, ...)
+    date_admitted = models.DateField(null=True, blank=True)
+    class_assigned = models.ForeignKey('academics.Class', ...)
+    wing = models.ForeignKey('administration.Wing', ...)
+    campus = models.ForeignKey('administration.Campus', ...)
+```
+
+| Field | Description |
+|-------|-------------|
+| `admission_number` | Unique identifier assigned at admission; used in display and reporting |
+| `enrollment_status` | One of: `active`, `graduated`, `withdrawn`, `transferred`, `repeated` |
+| `class_assigned` | The student's current class; nullable to allow unplaced students |
+| `wing` | FK to the Wing record (Regular / Islamiyyah / Tahfeez) |
+| `campus` | FK to the Campus record; supports multi-campus deployments |
+
+### `TeacherProfile`
+
+Holds employment and qualification data for teaching staff.
+
+```python
+class TeacherProfile(SoftDeleteModel, AuditMixin):
+    person = models.OneToOneField('accounts.Person', ...)
+    staff_number = models.CharField(max_length=20, unique=True)
+    date_employed = models.DateField(null=True, blank=True)
+    qualification = models.CharField(max_length=200, blank=True)
+    specialization = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    show_on_website = models.BooleanField(default=True)
+```
+
+| Field | Description |
+|-------|-------------|
+| `staff_number` | Unique staff identifier used in HR and payroll references |
+| `qualification` | Highest academic or professional qualification |
+| `specialization` | Subject area or departmental specialism |
+| `show_on_website` | Controls whether the teacher appears on public-facing staff listings |
+
+### `ParentProfile`
+
+Holds guardian-specific information for parents and guardians.
+
+```python
+class ParentProfile(SoftDeleteModel, AuditMixin):
+    person = models.OneToOneField('accounts.Person', ...)
+    occupation = models.CharField(max_length=200, blank=True)
+    employer = models.CharField(max_length=200, blank=True)
+    is_primary_guardian = models.BooleanField(default=False)
+```
+
+| Field | Description |
+|-------|-------------|
+| `occupation` | Parent's declared occupation |
+| `employer` | Parent's current employer |
+| `is_primary_guardian` | Flags the principal guardian when a student has multiple parent records |
+
+### `AlumniProfile`
+
+Created when a student graduates, linking their new alumni identity back to their original student profile.
+
+```python
+class AlumniProfile(SoftDeleteModel, AuditMixin):
+    person = models.OneToOneField('accounts.Person', ...)
+    student_profile = models.OneToOneField('people.StudentProfile', null=True, ...)
+    graduation_year = models.PositiveIntegerField()
+    final_class = models.ForeignKey('academics.Class', ...)
+    career_field = models.CharField(max_length=200, blank=True)
+    current_employer = models.CharField(max_length=200, blank=True)
+    university_attended = models.CharField(max_length=200, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, default='Nigeria')
+    linkedin_url = models.URLField(blank=True)
+    is_available_for_mentorship = models.BooleanField(default=False)
+    mentorship_areas = models.TextField(blank=True)
+    is_verified = models.BooleanField(default=False)
+    is_on_wall_of_fame = models.BooleanField(default=False)
+```
+
+| Field | Description |
+|-------|-------------|
+| `graduation_year` | Year the alumnus graduated |
+| `student_profile` | Optional back-link to the original `StudentProfile` record |
+| `is_available_for_mentorship` | Opt-in flag for the mentorship feature |
+| `is_on_wall_of_fame` | Controls public wall-of-fame listing |
+
+## Enrollment and Relationships
+
+### `ClassEnrollment`
+
+`ClassEnrollment` records a student's formal placement in a specific class for a given academic session and term. It is the temporal record of class membership — a student's `class_assigned` FK on `StudentProfile` is their current placement, while `ClassEnrollment` rows preserve the full history.
+
+```python
+class ClassEnrollment(BaseModel):
+    student = models.ForeignKey('people.StudentProfile', related_name='enrollments', ...)
+    class_assigned = models.ForeignKey('academics.Class', related_name='enrollments', ...)
+    session = models.ForeignKey('administration.AcademicSession', ...)
+    term = models.ForeignKey('administration.Term', ...)
+    date_enrolled = models.DateField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('student', 'class_assigned', 'session', 'term')
+```
+
+A `unique_together` constraint prevents duplicate enrollment records for the same student, class, session, and term combination.
+
+### `WardRelationship`
+
+`WardRelationship` links a `ParentProfile` to a `StudentProfile`, establishing who is authorised to act as guardian for a given student. One student can have multiple guardian links; one parent can be linked to multiple students.
+
+```python
+class WardRelationship(BaseModel):
+    parent = models.ForeignKey('people.ParentProfile', related_name='wards', ...)
+    student = models.ForeignKey('people.StudentProfile', related_name='guardians', ...)
+    relationship_type = models.CharField(max_length=50, blank=True)
+    is_primary_guardian = models.BooleanField(default=False)
+    can_pickup = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('parent', 'student')
+```
+
+The `can_pickup` flag is used by the transport and services apps to determine whether a parent is authorised to collect their ward from school.
+
+## Academic Records
+
+A `StudentProfile` acts as the anchor point for all academic data tracked by the `academics` app. The following models link directly or indirectly to a student profile:
+
+| Model | App module | Description |
+|-------|-----------|-------------|
+| `AttendanceRecord` | `academics.attendance` | Per-lesson or per-day attendance status for a student |
+| `AttendanceSummary` | `academics.attendance` | Aggregated attendance counts per term |
+| `Score` | `academics.scores` | CA and exam scores per subject per term |
+| `ReportCard` | `academics.scores` | Compiled end-of-term report card record |
+| `Assignment` | `academics.scores` | Assignment definition issued by a teacher |
+| `AssignmentSubmission` | `academics.scores` | A student's submission against an assignment |
+| `ExamRegistration` | `academics.exams` | Student registration for a formal exam sitting |
+| `ExamResult` | `academics.exams` | Recorded result from a formal exam |
+| `JuzProgress` | `academics.tahfeez` | Tahfeez-wing students' memorisation progress per Juz |
+| `RecitationSession` | `academics.tahfeez` | Individual recitation sessions with a teacher |
+
+<Info>
+  The `JuzProgress` and `RecitationSession` models are only meaningful for students in the **Tahfeez** wing. All other wings will not have rows in these tables.
+</Info>
+
+## Soft Delete Pattern
+
+Models that inherit `SoftDeleteModel` are never hard-deleted from the database. Instead, calling `.archive(user)` sets `is_archived=True`, records the timestamp in `archived_at`, and captures the requesting user in `archived_by`. Calling `.restore()` reverses this.
+
+Three managers control queryset visibility:
+
+```python
+# core/managers.py
+class ActiveManager(models.Manager):
+    """Returns only non-archived records."""
+    def get_queryset(self):
+        return super().get_queryset().filter(is_archived=False)
+
+class ArchivedManager(models.Manager):
+    """Returns only archived records."""
+    def get_queryset(self):
+        return super().get_queryset().filter(is_archived=True)
+
+class SoftDeleteManager(models.Manager):
+    """Returns all records regardless of archive state."""
+    def get_queryset(self):
+        return super().get_queryset()
+```
+
+These are attached to `SoftDeleteModel` as:
+
+| Manager | Access | Queryset |
+|---------|--------|----------|
+| `.objects` | `StudentProfile.objects.all()` | Active records only (`is_archived=False`) |
+| `.all_objects` | `StudentProfile.all_objects.all()` | Every record, archived or not |
+| `.archived` | `StudentProfile.archived.all()` | Archived records only (`is_archived=True`) |
+
+<Warning>
+  The default `.objects` manager filters out archived records automatically. If you need to inspect or restore archived data — for example in admin operations or data migrations — always use `.all_objects` or `.archived` explicitly.
+</Warning>
+
+## Audit Trail
+
+Models that inherit `AuditMixin` carry two FK fields pointing back to `accounts.User`:
+
+```python
+# core/models.py
+class AuditMixin(BaseModel):
+    """Abstract mixin tracking who created/modified a record."""
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+```
+
+| Field | Description |
+|-------|-------------|
+| `created_by` | The `User` who created the record; set once at creation and never updated |
+| `updated_by` | The `User` who last modified the record; updated on every subsequent save |
+
+Both FKs use `on_delete=models.SET_NULL`, so deleting a user account does not cascade to and destroy the records they created or modified — the FK is simply nullified, preserving the data integrity of the audit trail.
+
+`AuditMixin` is combined with `SoftDeleteModel` on key models such as `Person`, `StudentProfile`, `TeacherProfile`, `ParentProfile`, and `AlumniProfile`, giving those tables a complete record of who created them, who last touched them, who archived them, and when.

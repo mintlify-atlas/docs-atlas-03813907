@@ -1,0 +1,411 @@
+---
+title: "Services API — Library and Student Transport Management"
+sidebarTitle: "Services"
+description: "REST endpoints for school support services: library book catalogue, borrowing records, overdue fines, bus routes, vehicle fleet, and student transport subscriptions."
+---
+
+The Services module extends Gobarau Academy's backend with two core student support systems: the school library and the student transport network. The library sub-domain manages the full book lifecycle — cataloguing titles, tracking who has borrowed what and when, and recording overdue fines for unreturned books. The transport sub-domain handles route definitions, the vehicle fleet, and per-student subscription enrollments that map a student to a specific bus route and direction for an academic session. All endpoints require authentication and `IsStaffOrAdmin` permissions.
+
+---
+
+## Library
+
+### Books
+
+The `Book` model represents the library's physical inventory. Each title carries availability counters so staff can instantly see how many copies are on the shelf versus checked out.
+
+#### `GET /api/services/books/`
+
+Returns the full catalogue of library books ordered alphabetically by title.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the book record.
+</ResponseField>
+<ResponseField name="title" type="string">
+  Full title of the book (max 200 characters).
+</ResponseField>
+<ResponseField name="author" type="string">
+  Author name(s). Optional — defaults to `""`.
+</ResponseField>
+<ResponseField name="isbn" type="string">
+  ISBN number (max 20 characters). Must be unique across the catalogue. Optional — defaults to `""`.
+</ResponseField>
+<ResponseField name="genre" type="string">
+  Genre or subject classification (max 100 characters). Optional — defaults to `""`.
+</ResponseField>
+<ResponseField name="quantity_total" type="integer">
+  Total number of copies owned by the library. Defaults to `1`.
+</ResponseField>
+<ResponseField name="quantity_available" type="integer">
+  Number of copies currently available for borrowing. Defaults to `1`.
+</ResponseField>
+<ResponseField name="location" type="string">
+  Shelf or section location within the library (max 100 characters). Optional — defaults to `""`.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the record was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
+
+#### `POST /api/services/books/`
+
+Adds a new book to the library catalogue.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="title" type="string" required>
+  Full title of the book. Maximum 200 characters.
+</ParamField>
+<ParamField body="author" type="string">
+  Author name(s). Optional.
+</ParamField>
+<ParamField body="isbn" type="string">
+  Unique ISBN. Optional but must be unique if provided.
+</ParamField>
+<ParamField body="genre" type="string">
+  Genre or subject area. Optional.
+</ParamField>
+<ParamField body="quantity_total" type="integer">
+  Total copies acquired. Defaults to `1`.
+</ParamField>
+<ParamField body="quantity_available" type="integer">
+  Copies currently available. Defaults to `1`. Should not exceed `quantity_total`.
+</ParamField>
+<ParamField body="location" type="string">
+  Shelf/section location (e.g., `"Shelf B-3"`). Optional.
+</ParamField>
+
+---
+
+### Borrow Records
+
+A `BorrowRecord` is created each time a patron checks out a book. It tracks the expected return date and the actual return date, and its `status` moves through `borrowed → returned` (or `overdue` if the due date passes without a return).
+
+<Note>
+  The `borrow_date` field is set automatically to today's date on creation (`auto_now_add=True`) and cannot be supplied in the request body.
+</Note>
+
+#### `GET /api/services/borrow-records/`
+
+Returns all borrow records ordered by most recent borrow date first.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the borrow record.
+</ResponseField>
+<ResponseField name="book" type="integer (FK)">
+  ID of the `Book` that was borrowed.
+</ResponseField>
+<ResponseField name="borrower" type="integer (FK)">
+  ID of the `Person` (from `accounts.Person`) who borrowed the book.
+</ResponseField>
+<ResponseField name="borrow_date" type="string (date)">
+  Date the book was checked out. Set automatically on creation.
+</ResponseField>
+<ResponseField name="due_date" type="string (date)">
+  Expected return date in `YYYY-MM-DD` format.
+</ResponseField>
+<ResponseField name="return_date" type="string (date) | null">
+  Actual return date. `null` while the book is still out.
+</ResponseField>
+<ResponseField name="status" type="string (enum)">
+  Current status of the borrow. One of: `borrowed`, `returned`, `overdue`.
+</ResponseField>
+<ResponseField name="created_by" type="integer (FK) | null">
+  ID of the staff member who created this record (from `AuditMixin`).
+</ResponseField>
+<ResponseField name="updated_by" type="integer (FK) | null">
+  ID of the staff member who last modified this record.
+</ResponseField>
+
+#### `POST /api/services/borrow-records/`
+
+Creates a new borrow record, i.e., checks a book out to a borrower.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="book" type="integer" required>
+  ID of the `Book` being borrowed.
+</ParamField>
+<ParamField body="borrower" type="integer" required>
+  ID of the `Person` checking out the book.
+</ParamField>
+<ParamField body="due_date" type="string (date)" required>
+  Expected return date in `YYYY-MM-DD` format.
+</ParamField>
+<ParamField body="return_date" type="string (date)">
+  Actual return date. Supply when recording a return. Defaults to `null`.
+</ParamField>
+<ParamField body="status" type="string (enum)">
+  Borrow status. Defaults to `borrowed`. Options: `borrowed`, `returned`, `overdue`.
+</ParamField>
+
+```bash
+# Check out a book to a borrower
+curl -X POST https://api.gobarauacademy.edu.ng/api/services/borrow-records/ \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "book": 15,
+    "borrower": 88,
+    "due_date": "2025-02-14",
+    "status": "borrowed"
+  }'
+```
+
+---
+
+### Library Fines
+
+Library fines are levied against overdue borrow records. They are tracked independently of the main Finance payments module — a fine here captures the overdue debt, while settlement through the Finance module is handled separately.
+
+<Note>
+  Library fines are **not** automatically linked to a `Payment` record in the Finance module. They represent the outstanding debt only. Staff must reconcile fine payments separately through the finance workflow if required.
+</Note>
+
+#### `GET /api/services/library-fines/`
+
+Returns all library fine records ordered by most recently created.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the fine record.
+</ResponseField>
+<ResponseField name="borrow_record" type="integer (FK)">
+  ID of the `BorrowRecord` this fine was levied against.
+</ResponseField>
+<ResponseField name="amount" type="string (decimal)">
+  Fine amount (up to 10 digits, 2 decimal places), e.g., `"200.00"`.
+</ResponseField>
+<ResponseField name="paid" type="boolean">
+  Whether the fine has been paid. Defaults to `false`.
+</ResponseField>
+<ResponseField name="paid_at" type="string (ISO 8601 datetime) | null">
+  Timestamp of when the fine was cleared. `null` until paid.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the fine was raised.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
+
+#### `POST /api/services/library-fines/`
+
+Creates a new fine record against an overdue borrow record.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="borrow_record" type="integer" required>
+  ID of the `BorrowRecord` triggering the fine.
+</ParamField>
+<ParamField body="amount" type="string (decimal)" required>
+  Fine amount, e.g., `"150.00"`.
+</ParamField>
+<ParamField body="paid" type="boolean">
+  Set to `true` to immediately mark as settled. Defaults to `false`.
+</ParamField>
+<ParamField body="paid_at" type="string (ISO 8601 datetime)">
+  Timestamp of payment. Required if `paid` is `true`. Defaults to `null`.
+</ParamField>
+
+---
+
+## Transport
+
+### Bus Routes
+
+A `BusRoute` defines a named corridor between an origin and destination, with optional intermediate stops stored as a JSON array. Multiple vehicles can be assigned to a single route.
+
+#### `GET /api/services/bus-routes/`
+
+Returns all defined bus routes ordered alphabetically by name.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the route.
+</ResponseField>
+<ResponseField name="name" type="string">
+  Route name (max 200 characters), e.g., `"Northern Zone Route"`.
+</ResponseField>
+<ResponseField name="origin" type="string">
+  Starting point of the route (max 200 characters).
+</ResponseField>
+<ResponseField name="destination" type="string">
+  End point of the route (max 200 characters).
+</ResponseField>
+<ResponseField name="stops" type="array">
+  JSON array of intermediate stop names. Defaults to `[]`.
+</ResponseField>
+<ResponseField name="distance_km" type="string (decimal)">
+  Total route distance in kilometres (up to 5 digits, 2 decimal places). Defaults to `"0.00"`.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the route was created.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
+
+#### `POST /api/services/bus-routes/`
+
+Creates a new bus route.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="name" type="string" required>
+  Display name for the route. Maximum 200 characters.
+</ParamField>
+<ParamField body="origin" type="string" required>
+  Starting location of the route.
+</ParamField>
+<ParamField body="destination" type="string" required>
+  End location of the route.
+</ParamField>
+<ParamField body="stops" type="array">
+  Optional JSON array of intermediate stop strings, e.g., `["Kofar Wambai", "Rijiyar Zaki"]`. Defaults to `[]`.
+</ParamField>
+<ParamField body="distance_km" type="string (decimal)">
+  Route distance in km. Defaults to `"0.00"`.
+</ParamField>
+
+---
+
+### Bus Vehicles
+
+Each `BusVehicle` record tracks a physical school bus identified by its unique registration number. A vehicle is optionally assigned a driver and a route.
+
+<Tip>
+  Both `driver` and `route` use `SET_NULL` on delete — removing a driver or route will not delete the vehicle record; those fields will simply become `null`.
+</Tip>
+
+#### `GET /api/services/bus-vehicles/`
+
+Returns all registered vehicles ordered by registration number.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the vehicle record.
+</ResponseField>
+<ResponseField name="registration_number" type="string">
+  Official vehicle registration plate (max 20 characters). Must be unique.
+</ResponseField>
+<ResponseField name="capacity" type="integer">
+  Maximum passenger capacity. Defaults to `30`.
+</ResponseField>
+<ResponseField name="driver" type="integer (FK) | null">
+  ID of the `Person` (accounts) assigned as driver. Nullable.
+</ResponseField>
+<ResponseField name="route" type="integer (FK) | null">
+  ID of the `BusRoute` this vehicle currently serves. Nullable.
+</ResponseField>
+<ResponseField name="created_at" type="string (ISO 8601 datetime)">
+  Timestamp when the vehicle was registered.
+</ResponseField>
+<ResponseField name="updated_at" type="string (ISO 8601 datetime)">
+  Timestamp of the last update.
+</ResponseField>
+
+#### `POST /api/services/bus-vehicles/`
+
+Registers a new school bus vehicle.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="registration_number" type="string" required>
+  Vehicle registration plate. Must be unique. Maximum 20 characters.
+</ParamField>
+<ParamField body="capacity" type="integer">
+  Passenger capacity. Defaults to `30`.
+</ParamField>
+<ParamField body="driver" type="integer">
+  Optional ID of the assigned driver (`Person`). Can be `null`.
+</ParamField>
+<ParamField body="route" type="integer">
+  Optional ID of the assigned `BusRoute`. Can be `null`.
+</ParamField>
+
+---
+
+### Transport Subscriptions
+
+A `TransportSubscription` enrolls a student on a specific bus route for an academic session, capturing the travel direction and the subscription fee charged.
+
+<Warning>
+  The combination of `student`, `session`, and `route` must be unique. A student cannot be subscribed to the same route twice in the same session. Attempting a duplicate subscription will return `400 Bad Request`.
+</Warning>
+
+#### `GET /api/services/transport-subscriptions/`
+
+Returns all transport subscriptions ordered by most recently created.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ResponseField name="id" type="string (UUID)">
+  Unique identifier of the subscription.
+</ResponseField>
+<ResponseField name="student" type="integer (FK)">
+  ID of the subscribed `StudentProfile`.
+</ResponseField>
+<ResponseField name="route" type="integer (FK)">
+  ID of the `BusRoute` the student is enrolled on.
+</ResponseField>
+<ResponseField name="session" type="integer (FK)">
+  ID of the `AcademicSession` this subscription covers.
+</ResponseField>
+<ResponseField name="direction" type="string (enum)">
+  Travel direction. One of: `to_school`, `from_school`, `both`. Defaults to `both`.
+</ResponseField>
+<ResponseField name="fee_amount" type="string (decimal)">
+  Transport fee charged for this subscription.
+</ResponseField>
+<ResponseField name="created_by" type="integer (FK) | null">
+  ID of the staff member who created this record (from `AuditMixin`).
+</ResponseField>
+<ResponseField name="updated_by" type="integer (FK) | null">
+  ID of the staff member who last updated this record.
+</ResponseField>
+
+#### `POST /api/services/transport-subscriptions/`
+
+Enrolls a student on a bus route for the given session.
+
+**Permissions:** `IsAuthenticated`, `IsStaffOrAdmin`
+
+<ParamField body="student" type="integer" required>
+  ID of the `StudentProfile` to enroll.
+</ParamField>
+<ParamField body="route" type="integer" required>
+  ID of the `BusRoute` to subscribe to.
+</ParamField>
+<ParamField body="session" type="integer" required>
+  ID of the `AcademicSession` this subscription covers.
+</ParamField>
+<ParamField body="fee_amount" type="string (decimal)" required>
+  Transport fee for the subscription, e.g., `"30000.00"`.
+</ParamField>
+<ParamField body="direction" type="string (enum)">
+  Direction of travel. Defaults to `both`. Options: `to_school`, `from_school`, `both`.
+</ParamField>
+
+```bash
+# Subscribe a student to a bus route for the current session
+curl -X POST https://api.gobarauacademy.edu.ng/api/services/transport-subscriptions/ \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": 42,
+    "route": 3,
+    "session": 5,
+    "direction": "both",
+    "fee_amount": "30000.00"
+  }'
+```

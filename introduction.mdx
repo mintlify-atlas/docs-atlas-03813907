@@ -1,0 +1,83 @@
+---
+title: "Gobarau Academy Backend: School Management REST API"
+sidebarTitle: "Introduction"
+description: "Overview of the Gobarau Academy Backend — a Django REST Framework API managing academics, admissions, finance, welfare, and more for a multi-wing Islamic school."
+---
+
+Gobarau Academy Backend is a comprehensive Django REST Framework API purpose-built for managing the full lifecycle of a multi-wing Islamic school. Designed for developers who are integrating with, extending, or building client applications on top of the school platform, the API exposes structured REST endpoints covering everything from student admissions and academic records to finance, welfare, and communications. Whether you are building a mobile app for parents, a dashboard for administrators, or automating school workflows, this backend provides a consistent, role-aware interface to all school data.
+
+## Multi-Wing School Structure
+
+Gobarau Academy operates across three distinct educational wings, each with its own student population and curriculum focus. Every user account and enrollment record in the system is associated with one of these wings:
+
+| Wing | Value | Description |
+|---|---|---|
+| **Regular** | `regular` | The conventional academic programme following a standard Nigerian curriculum |
+| **Islamiyyah** | `islamiyyah` | An Islamic studies wing integrating Quranic education with general academics |
+| **Tahfeez** | `tahfeez` | A Quran memorisation wing focused on full Hifz completion alongside core subjects |
+
+## Django Application Modules
+
+The backend is organized into **10 domain-specific Django apps**, each responsible for a distinct area of school operations:
+
+- **`accounts`** — Custom user model with role and wing assignment, user management endpoints, and the `Person` identity record that ties every human (student, staff, parent) to a unified profile.
+- **`administration`** — School-wide administrative data including academic sessions, terms, classes, and operational configuration that other apps depend on.
+- **`people`** — Detailed records for students, teachers, parents, and alumni. Extends the base `Person` model with role-specific profiles and relationships.
+- **`academics`** — Academic operations including subjects, timetables, attendance tracking, assessments, grades, and Tahfeez Juz progress records.
+- **`admissions`** — The full admissions pipeline: applications, status tracking (pending, accepted, rejected, waitlisted), and onboarding workflows for new students.
+- **`finance`** — Fee structures, invoices, payments, and bursar-level financial reporting. Supports cash, bank transfer, and online payment methods.
+- **`communication`** — Internal messaging, announcements, and notification delivery across the school community.
+- **`content`** — Learning resources, digital materials, and library or resource management for academic content distribution.
+- **`welfare`** — Student welfare and pastoral care: health records, disciplinary cases, merit/demerit tracking, counselling sessions, and intervention management.
+- **`services`** — Auxiliary school services such as transport routing and library borrowing records.
+
+## API Domain Areas
+
+<CardGroup cols={2}>
+  <Card title="Administration" icon="building-columns" href="/api/administration">
+    Academic sessions, terms, timetables, and school-wide configuration.
+  </Card>
+  <Card title="Accounts" icon="user-circle" href="/api/accounts">
+    User management, roles, wing assignment, and identity records.
+  </Card>
+  <Card title="People" icon="users" href="/api/people">
+    Student, teacher, parent, and alumni profiles and relationships.
+  </Card>
+  <Card title="Admissions" icon="file-pen" href="/api/admissions">
+    Application pipeline, status tracking, and onboarding workflows.
+  </Card>
+  <Card title="Academics" icon="graduation-cap" href="/api/academics">
+    Subjects, attendance, assessments, grades, and Tahfeez progress.
+  </Card>
+  <Card title="Welfare" icon="heart-pulse" href="/api/welfare">
+    Health records, disciplinary cases, counselling, and interventions.
+  </Card>
+  <Card title="Finance" icon="coins" href="/api/finance">
+    Fee structures, invoices, payments, and financial reporting.
+  </Card>
+  <Card title="Services" icon="bus" href="/api/services">
+    Transport routing and library borrowing management.
+  </Card>
+  <Card title="Communication" icon="envelope" href="/api/communication">
+    Messaging, announcements, and notifications.
+  </Card>
+  <Card title="Content" icon="book-open" href="/api/content">
+    Learning resources and digital academic materials.
+  </Card>
+</CardGroup>
+
+## Authentication & Authorization
+
+All API endpoints require authentication. The backend uses **JWT (JSON Web Tokens)** via `djangorestframework-simplejwt`. Clients authenticate by exchanging credentials for a short-lived access token and a longer-lived refresh token. Every request to a protected endpoint must include the access token in the `Authorization` header as a Bearer token.
+
+Access to individual endpoints is further governed by **role-based access control (RBAC)**. The system defines 10 distinct roles — from `super_admin` and `principal` down to `student`, `parent`, and `nurse` — and three custom permission classes (`IsAdminLevel`, `IsStaffOrAdmin`, `IsOwnStudent`, `IsOwnWard`) that restrict what each role can read or modify. See the [Authentication guide](/authentication) for full details.
+
+## Infrastructure Notes
+
+- **Media Storage** — User profile photos and other uploaded files are stored via **Cloudinary** using `django-cloudinary-storage`, ensuring scalable cloud media delivery without local disk dependency.
+- **Database** — The default development database is **SQLite** (`db.sqlite3` at the project root). Production deployments should swap this for a robust relational database such as PostgreSQL.
+- **Admin Panel** — The Django admin is enhanced with **django-unfold** for an improved UI. It is accessible at `/admin/` and supports `django-import-export` for bulk data operations.
+
+<Note>
+  Gobarau Academy Backend is under **active development**. Endpoints, serializers, and permission logic are subject to change. Always check the latest source and this documentation before building integrations. Breaking changes will be communicated via the project changelog.
+</Note>

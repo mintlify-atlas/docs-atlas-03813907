@@ -1,47 +1,134 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Gobarau Academy Backend"
+sidebarTitle: "Quickstart"
+description: "Set up Gobarau Academy Backend locally, apply migrations, create a superuser, obtain a JWT token, and make your first authenticated API call in five steps."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+This guide walks you through everything needed to run Gobarau Academy Backend on your local machine and make your first authenticated API call. By the end you will have a running Django development server, a superuser account, and a working JWT access token you can use to explore all API endpoints. The whole process takes under ten minutes on a standard developer workstation.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the Repository">
+    Fetch the source code from GitHub and navigate into the project directory:
 
     ```bash
-    npm install your-package
+    git clone https://github.com/muhammadbugaje/gobarau_backend.git
+    cd gobarau_backend
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
+  <Step title="Create and Activate a Virtual Environment">
+    The project requires **Python 3.12**. Create and activate a dedicated virtual environment to keep dependencies isolated.
+
+    **Linux / macOS:**
     ```bash
-    your-cli init
+    python3.12 -m venv venv
+    source venv/bin/activate
     ```
+
+    **Windows (PowerShell):**
+    ```bash
+    python -m venv venv
+    .\venv\Scripts\Activate.ps1
+    ```
+
+    <Info>
+      The repository may already include a `venv/` directory. If it does, you can activate it directly with the commands above instead of creating a new one.
+    </Info>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Install Dependencies">
+    With the virtual environment active, install all required packages:
 
     ```bash
-    your-cli start
+    pip install -r requirements.txt
     ```
+
+    This installs Django, Django REST Framework, `djangorestframework-simplejwt`, Cloudinary storage, django-unfold, CORS headers, and all other project dependencies declared in `requirements.txt`.
+  </Step>
+
+  <Step title="Configure the Database">
+    Apply all Django migrations to create the SQLite database schema. This sets up every table across all 10 apps:
+
+    ```bash
+    python manage.py migrate
+    ```
+
+    You should see output confirming that each migration has been applied. The database file `db.sqlite3` will be created in the project root.
+  </Step>
+
+  <Step title="Create a Superuser">
+    Create an admin account that you will use to log in to the Django admin panel and to obtain your first JWT token:
+
+    ```bash
+    python manage.py createsuperuser
+    ```
+
+    Follow the prompts to set a username, email address, and password. Once created, you can access the admin panel at [http://127.0.0.1:8000/admin/](http://127.0.0.1:8000/admin/).
+
+    <Tip>
+      The admin panel is powered by **django-unfold**, giving it a modern, polished UI. Use it to seed initial data such as academic sessions, wing assignments, and user roles before making API calls. It also supports bulk import and export via `django-import-export`.
+    </Tip>
+  </Step>
+
+  <Step title="Start the Development Server">
+    Launch the Django development server:
+
+    ```bash
+    python manage.py runserver
+    ```
+
+    The API will be available at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). You should see the Django REST Framework browsable API if you visit any API endpoint in your browser.
+  </Step>
+
+  <Step title="Obtain a JWT Token">
+    Gobarau Academy Backend uses `djangorestframework-simplejwt` for authentication. To enable token endpoints, add the following URL patterns to your project's `gobarau/urls.py`:
+
+    ```python
+    from rest_framework_simplejwt.views import (
+        TokenObtainPairView,
+        TokenRefreshView,
+    )
+
+    urlpatterns = [
+        # ... existing patterns ...
+        path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+        path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    ]
+    ```
+
+    Once added, obtain an access and refresh token pair by posting your credentials:
+
+    ```bash
+    curl -X POST http://127.0.0.1:8000/api/token/ \
+      -H "Content-Type: application/json" \
+      -d '{"username": "your_superuser", "password": "your_password"}'
+    ```
+
+    A successful response returns both tokens:
+
+    ```json
+    {
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+    ```
+
+    Copy the `access` token — you will use it in the `Authorization` header for every subsequent request.
+
+    <Note>
+      See the [Authentication guide](/authentication) for full details on token lifetimes, refreshing expired tokens, user roles, and the permission classes that control endpoint access.
+    </Note>
+  </Step>
+
+  <Step title="Make Your First Authenticated API Call">
+    With your access token in hand, call a protected endpoint. The following example retrieves the list of academic sessions from the Administration module:
+
+    ```bash
+    curl -X GET http://127.0.0.1:8000/api/administration/academic-sessions/ \
+      -H "Authorization: Bearer <your_access_token>" \
+      -H "Accept: application/json"
+    ```
+
+    Replace `<your_access_token>` with the `access` value from the previous step. A `200 OK` response confirms your setup is working end-to-end.
   </Step>
 </Steps>
-
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>

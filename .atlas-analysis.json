@@ -1,0 +1,162 @@
+{
+  "projectType": "api-service",
+  "projectName": "Gobarau Academy Backend",
+  "projectDescription": "A Django REST Framework backend powering Gobarau Academy's school management platform, exposing REST APIs for academics, admissions, finance, welfare, communication, and more across multi-wing (Regular, Islamiyyah, Tahfeez) campuses.",
+  "theme": "luma",
+  "primaryColor": "#1B6B3A",
+  "lightColor": "#E6F4EC",
+  "darkColor": "#0D3D20",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/roles-and-permissions",
+              "concepts/data-model"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/setup",
+              "guides/deployment",
+              "guides/configuration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Administration",
+            "pages": [
+              "api/administration",
+              "api/accounts"
+            ]
+          },
+          {
+            "group": "People & Admissions",
+            "pages": [
+              "api/people",
+              "api/admissions"
+            ]
+          },
+          {
+            "group": "Academics",
+            "pages": [
+              "api/academics",
+              "api/welfare"
+            ]
+          },
+          {
+            "group": "Finance & Services",
+            "pages": [
+              "api/finance",
+              "api/services"
+            ]
+          },
+          {
+            "group": "Communication & Content",
+            "pages": [
+              "api/communication",
+              "api/content"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-wing school support (Regular, Islamiyyah, Tahfeez)",
+    "JWT-based authentication with role-based access control (10 roles)",
+    "Full academic lifecycle: classes, subjects, timetables, scores, report cards",
+    "Qur'an Tahfeez (memorization) progress tracking with Juz and recitation sessions",
+    "Admissions pipeline: applications, entrance exams, and alumni registration",
+    "Finance management: fee structures, payments, scholarships, and marketplace",
+    "Student welfare: health profiles, counselling, discipline, and interventions",
+    "Library and transport services management",
+    "Communication hub: announcements, notifications, direct messages, Q&A board",
+    "Content management: news, events, gallery, magazine, yearbook, testimonials",
+    "Soft-delete and audit trail mixins on all sensitive models",
+    "Cloudinary integration for media storage"
+  ],
+  "publicApiSurface": [
+    "POST /api/accounts/users/ — create user",
+    "GET /api/accounts/users/{id}/ — retrieve user",
+    "POST /api/accounts/people/ — create person identity record",
+    "GET/POST /api/administration/academic-sessions/ — manage academic sessions",
+    "GET/POST /api/administration/terms/ — manage terms",
+    "GET/POST /api/administration/wings/ — manage school wings",
+    "GET/POST /api/administration/campuses/ — manage campuses",
+    "GET/POST /api/administration/class-levels/ — manage class levels",
+    "GET/POST /api/administration/grading-scales/ — manage grading scales",
+    "GET/POST /api/administration/grading-bands/ — manage grading bands",
+    "GET/POST /api/administration/school-settings/ — school-wide config",
+    "GET/POST /api/people/students/ — student profiles",
+    "GET/POST /api/people/teachers/ — teacher profiles",
+    "GET/POST /api/people/parents/ — parent profiles",
+    "GET/POST /api/people/alumni/ — alumni profiles",
+    "GET/POST /api/people/enrollments/ — class enrollments",
+    "GET/POST /api/people/ward-relationships/ — parent-student links",
+    "GET/POST /api/admissions/applications/ — admission applications",
+    "GET/POST /api/admissions/entrance-exams/ — entrance exam records",
+    "GET/POST /api/admissions/alumni-registrations/ — alumni registrations",
+    "GET/POST /api/academics/classes/ — class instances",
+    "GET/POST /api/academics/subjects/ — subjects",
+    "GET/POST /api/academics/teacher-class-subjects/ — teacher assignments",
+    "GET/POST /api/academics/timetables/ — class timetables",
+    "GET/POST /api/academics/exam-timetables/ — exam timetables",
+    "GET/POST /api/academics/scores/ — student scores",
+    "GET/POST /api/academics/report-cards/ — report cards",
+    "GET/POST /api/academics/assignments/ — assignments",
+    "GET/POST /api/academics/assignment-submissions/ — submissions",
+    "GET/POST /api/academics/attendance-records/ — daily attendance",
+    "GET/POST /api/academics/attendance-summaries/ — term summaries",
+    "GET/POST /api/academics/exam-registrations/ — exam registrations",
+    "GET/POST /api/academics/exam-results/ — exam results",
+    "GET/POST /api/academics/juz-progresses/ — Tahfeez Juz progress",
+    "GET/POST /api/academics/recitation-sessions/ — recitation sessions",
+    "GET/POST /api/finance/fee-types/ — fee type categories",
+    "GET/POST /api/finance/fee-structures/ — fee structures per class/session",
+    "GET/POST /api/finance/payments/ — payment records",
+    "GET/POST /api/finance/scholarship-funds/ — scholarship funds",
+    "GET/POST /api/finance/scholarship-recipients/ — scholarship awards",
+    "GET/POST /api/finance/marketplace-items/ — school marketplace items",
+    "GET/POST /api/finance/marketplace-requests/ — student item requests",
+    "GET/POST /api/communication/announcements/ — school announcements",
+    "GET/POST /api/communication/notifications/ — per-user notifications",
+    "GET/POST /api/communication/messages/ — direct messages",
+    "GET/POST /api/communication/questions/ — student Q&A",
+    "GET/POST /api/communication/career-talk-sessions/ — alumni career talks",
+    "GET/POST /api/content/news-posts/ — school news articles",
+    "GET/POST /api/content/events/ — school events",
+    "GET/POST /api/content/gallery-albums/ — photo albums",
+    "GET/POST /api/content/magazine-issues/ — school magazine issues",
+    "GET/POST /api/content/testimonials/ — alumni/parent testimonials",
+    "GET/POST /api/welfare/health-profiles/ — student health profiles",
+    "GET/POST /api/welfare/clinic-visits/ — clinic visit records",
+    "GET/POST /api/welfare/counselling-sessions/ — counselling sessions",
+    "GET/POST /api/welfare/disciplinary-records/ — disciplinary records",
+    "GET/POST /api/welfare/intervention-cases/ — welfare intervention cases",
+    "GET/POST /api/welfare/welfare-reports/ — welfare reports",
+    "GET/POST /api/services/books/ — library books",
+    "GET/POST /api/services/borrow-records/ — book borrow records",
+    "GET/POST /api/services/library-fines/ — library fines",
+    "GET/POST /api/services/bus-routes/ — transport bus routes",
+    "GET/POST /api/services/bus-vehicles/ — bus fleet",
+    "GET/POST /api/services/transport-subscriptions/ — student transport subscriptions"
+  ]
+}

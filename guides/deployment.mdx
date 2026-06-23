@@ -1,0 +1,205 @@
+---
+title: "Deploy Gobarau Academy Backend to Production"
+sidebarTitle: "Deployment"
+description: "Production deployment checklist for Gobarau Academy Backend: secure settings, database migration, static files, Gunicorn/uWSGI, and Cloudinary media storage."
+---
+
+Deploying Gobarau Academy Backend to a production environment requires several changes from the default development configuration. The current `settings.py` ships with a hardcoded secret key, `DEBUG = True`, an empty `ALLOWED_HOSTS`, and a local SQLite database — none of which are appropriate for a live server. Work through this checklist in order before exposing the application to the internet.
+
+<Warning>
+  The `settings.py` file currently contains a hardcoded `SECRET_KEY` value (`django-insecure-(o4n%y#c=...`). This key **must** be replaced with a new, randomly generated secret before deploying to any non-development environment. Exposing the default insecure key in production is a critical security vulnerability.
+</Warning>
+
+<Warning>
+  `corsheaders` is listed in `INSTALLED_APPS` but `CorsMiddleware` has **not** been added to the `MIDDLEWARE` list in `settings.py`. Without this, CORS headers will not be sent. You must add `corsheaders.middleware.CorsMiddleware` to `MIDDLEWARE` **and** configure either `CORS_ALLOWED_ORIGINS` or `CORS_ALLOW_ALL_ORIGINS` before your frontend can make cross-origin API requests.
+</Warning>
+
+## Pre-Deployment Checklist
+
+<Steps>
+  <Step title="Replace the SECRET_KEY">
+    Generate a new cryptographically strong secret key and store it in an environment variable. Never hardcode it in source control.
+
+    Generate a key with Python:
+    ```bash
+    python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+    ```
+
+    Then update `settings.py` to read it from the environment:
+    ```python
+    import os
+    SECRET_KEY = os.environ["SECRET_KEY"]
+    ```
+  </Step>
+
+  <Step title="Disable DEBUG">
+    Set `DEBUG` to `False` in your production settings. When `DEBUG` is `True`, Django exposes full stack traces to the browser — a serious information leak in production.
+
+    ```python
+    DEBUG = False
+    ```
+
+    Or read it from an environment variable:
+    ```python
+    DEBUG = os.environ.get("DEBUG", "False") == "True"
+    ```
+  </Step>
+
+  <Step title="Configure ALLOWED_HOSTS">
+    Add every hostname and IP address your application will be served from. Django will reject requests that do not match this list when `DEBUG = False`.
+
+    ```python
+    ALLOWED_HOSTS = ["yourdomain.com", "www.yourdomain.com", "your-server-ip"]
+    ```
+  </Step>
+
+  <Step title="Enable CORS">
+    `corsheaders` is already installed. Add `CorsMiddleware` to `MIDDLEWARE` **before** `CommonMiddleware`, then configure the allowed origins:
+
+    ```python
+    MIDDLEWARE = [
+        'django.middleware.security.SecurityMiddleware',
+        'django.contrib.sessions.middleware.SessionMiddleware',
+        'corsheaders.middleware.CorsMiddleware',          # ← add here
+        'django.middleware.common.CommonMiddleware',
+        ...
+    ]
+
+    CORS_ALLOWED_ORIGINS = [
+        "https://yourfrontend.com",
+        "https://www.yourfrontend.com",
+    ]
+    ```
+
+    See the full [CORS Configuration](#cors-configuration) section below for more options.
+  </Step>
+
+  <Step title="Switch to a production database">
+    The default SQLite configuration is not suitable for production workloads. Replace it with PostgreSQL:
+
+    ```python
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ['DB_NAME'],
+            'USER': os.environ['DB_USER'],
+            'PASSWORD': os.environ['DB_PASSWORD'],
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+        }
+    }
+    ```
+
+    Install the PostgreSQL adapter:
+    ```bash
+    pip install psycopg2-binary
+    ```
+  </Step>
+
+  <Step title="Configure Cloudinary">
+    Gobarau Academy uses Cloudinary for media storage. Provide your credentials via environment variables and add the storage configuration to `settings.py`:
+
+    ```python
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': os.environ['CLOUDINARY_CLOUD_NAME'],
+        'API_KEY': os.environ['CLOUDINARY_API_KEY'],
+        'API_SECRET': os.environ['CLOUDINARY_API_SECRET'],
+    }
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    ```
+  </Step>
+
+  <Step title="Collect static files">
+    Before starting the production server, collect all static assets into `STATIC_ROOT`:
+
+    ```bash
+    python manage.py collectstatic --noinput
+    ```
+
+    Make sure `STATIC_ROOT` is set in `settings.py`:
+    ```python
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
+    ```
+  </Step>
+
+  <Step title="Run migrations">
+    Apply any pending database migrations against your production database:
+
+    ```bash
+    python manage.py migrate
+    ```
+  </Step>
+</Steps>
+
+## Environment Variables
+
+Store all sensitive configuration values as environment variables. Never commit them to source control.
+
+| Variable | Description |
+|---|---|
+| `SECRET_KEY` | Django secret key — long random string |
+| `DEBUG` | Set to `False` in production |
+| `ALLOWED_HOSTS` | Comma-separated list of allowed hostnames |
+| `DATABASE_URL` | PostgreSQL connection string (e.g. `postgres://user:pass@host:5432/dbname`) |
+| `CLOUDINARY_CLOUD_NAME` | Your Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Your Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Your Cloudinary API secret |
+
+## WSGI / ASGI
+
+The project ships with both `gobarau/wsgi.py` and `gobarau/asgi.py`, generated automatically by `django-admin startproject`. For most deployments, use **Gunicorn** against the WSGI entrypoint:
+
+```bash
+gunicorn gobarau.wsgi:application \
+  --workers 4 \
+  --bind 0.0.0.0:8000 \
+  --timeout 120
+```
+
+Install Gunicorn first:
+```bash
+pip install gunicorn
+```
+
+For async support or WebSocket handling, point Gunicorn (with Uvicorn workers) or another ASGI server at `gobarau.asgi:application`:
+
+```bash
+gunicorn gobarau.asgi:application \
+  --workers 4 \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000
+```
+
+## CORS Configuration
+
+`corsheaders` (django-cors-headers 4.9.0) is already installed. The only remaining step is wiring it into `MIDDLEWARE` and declaring your allowed origins.
+
+**Add `CorsMiddleware` to `MIDDLEWARE`** — it must appear before `CommonMiddleware`:
+
+```python
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',          # ← before CommonMiddleware
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+```
+
+**Restrict to specific origins (recommended for production):**
+
+```python
+CORS_ALLOWED_ORIGINS = [
+    "https://yourfrontend.com",
+    "https://www.yourfrontend.com",
+]
+```
+
+**Allow all origins (development only — do not use in production):**
+
+```python
+CORS_ALLOW_ALL_ORIGINS = True
+```
